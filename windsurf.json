@@ -1,0 +1,15 @@
+{
+  "ignore": [
+    "node_modules/**",
+    "dist/**",
+    "*.lock",
+    ".env",
+    "public/**",
+    ".next/**",
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/.next/**",
+    "**/coverage/**",
+    "**/build/**"
+  ]
+}
