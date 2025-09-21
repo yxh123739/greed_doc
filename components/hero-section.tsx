@@ -16,8 +16,7 @@ export function HeroSection() {
 
           {/* Subtitle */}
           <p className="text-xl text-primary-foreground/90 mb-10 leading-relaxed max-w-2xl mx-auto">
-            We&apos;re here to help you navigate the complexities of LEED
-            certification and make your project a success.
+            Simplify and automate LEED documentation with GreenDoc Tools
           </p>
 
           {/* CTA Buttons */}

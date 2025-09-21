@@ -89,7 +89,9 @@ export function Navbar() {
           <div className="flex items-center space-x-4">
             {/* <ThemeToggle /> */}
             <ContactUsDialog>
-              <Button variant="outline">Contact Us</Button>
+              <Button variant="outline" className="text-primary">
+                Contact Us
+              </Button>
             </ContactUsDialog>
             {email ? (
               <DropdownMenu>

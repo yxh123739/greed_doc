@@ -46,7 +46,7 @@ export function Sidebar({
     <div className="h-full flex flex-col gap-6">
       <Card className="flex-1">
         <CardHeader>
-          <CardTitle>LEED Certification Assessment</CardTitle>
+          <CardTitle>LEED Certification Target</CardTitle>
           <CardDescription>
             Based on your current project specifications
           </CardDescription>
@@ -74,10 +74,10 @@ export function Sidebar({
             </Badge>
 
             <p className="text-sm text-muted-foreground max-w-sm mx-auto text-left">
-              Disclaimer: This assessment evaluates feasibility for LEED BD+C
-              credits using simplified heuristics. Actual eligibility and
-              certification depend on design integration, detailed
-              documentation, and USGBC/GBCI review.
+              Disclaimer: This assessment evaluates feasibility for LEED credits
+              using simplified heuristics. Actual eligibility and certification
+              depend on design integration, detailed documentation, and
+              USGBC/GBCI review.
             </p>
           </div>
         </CardContent>
@@ -85,7 +85,7 @@ export function Sidebar({
 
       <Card>
         <CardHeader>
-          <CardTitle>Certification Levels</CardTitle>
+          <CardTitle>Certification Target</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {[
@@ -190,4 +190,3 @@ export function Sidebar({
     </div>
   );
 }
-
