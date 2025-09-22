@@ -283,8 +283,7 @@ export default function LEEDSurvey() {
             LEED v5 BD+C Target Finder
           </h2>
           <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-            Evaluate your project&apos;s potential for LEED v5 certification by
-            adjusting the criteria below.
+            Set a realistic LEED target tailored to your project
           </p>
         </div>
 
