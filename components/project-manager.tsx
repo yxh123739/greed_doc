@@ -96,7 +96,7 @@ export function ProjectManager({
   if (!email) {
     return (
       <div className="flex items-center gap-1 text-sm text-muted-foreground">
-        <Button variant="outline" asChild className="pr-2">
+        <Button variant="outline" asChild className="pr-3">
           <Link href="/signin">Sign In To Save Your Project! </Link>
         </Button>
       </div>
