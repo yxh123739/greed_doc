@@ -6,7 +6,7 @@ import { Analytics } from "@vercel/analytics/next";
 import { Toaster } from "@/components/ui/sonner";
 export const metadata: Metadata = {
   title: "LEED Target Finder",
-  description: "Assess your project’s LEED feasibility with ease",
+  description: "Find a realistic LEED target with ease",
 };
 
 export default function RootLayout({
