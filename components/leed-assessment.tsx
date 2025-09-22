@@ -61,7 +61,7 @@ export function LEEDAssessment({
             <div className="flex-1">
               <CardTitle>Project Criteria</CardTitle>
               <CardDescription>
-                Adjust the sliders based on your project specifications
+                Adjust the sliders to match your project details
               </CardDescription>
             </div>
             <div className="flex-shrink-0">
