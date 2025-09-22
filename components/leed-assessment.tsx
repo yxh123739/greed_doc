@@ -32,6 +32,7 @@ interface LEEDAssessmentProps {
   saving: boolean;
   onSave: (projectName: string) => Promise<void>;
   onLoad: (projectName: string) => Promise<void>;
+  onDelete: (projectName: string) => Promise<void>;
 }
 
 // Get current level based on slider value and category levels
@@ -50,26 +51,30 @@ export function LEEDAssessment({
   saving,
   onSave,
   onLoad,
+  onDelete,
 }: LEEDAssessmentProps) {
   return (
     <div className="lg:col-span-2 flex">
       <Card className="flex-1 h-full">
         <CardHeader>
           <div className="flex justify-between items-start">
-            <div>
+            <div className="flex-1">
               <CardTitle>Project Criteria</CardTitle>
               <CardDescription>
                 Adjust the sliders based on your project specifications
               </CardDescription>
             </div>
-            <ProjectManager
-              email={email}
-              projects={projects}
-              selectedProject={selectedProject}
-              saving={saving}
-              onSave={onSave}
-              onLoad={onLoad}
-            />
+            <div className="flex-shrink-0">
+              <ProjectManager
+                email={email}
+                projects={projects}
+                selectedProject={selectedProject}
+                saving={saving}
+                onSave={onSave}
+                onLoad={onLoad}
+                onDelete={onDelete}
+              />
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">

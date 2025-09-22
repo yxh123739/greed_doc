@@ -88,6 +88,31 @@ export async function saveProjectScores(
   // get current user id from auth
   const user = await getUser();
   if (!user) throw new Error("Not authenticated");
+
+  // Check if project already exists (update case)
+  const { data: existing } = await supabase
+    .from("project_scores")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("name", name)
+    .maybeSingle();
+
+  // If it's a new project, check the limit
+  if (!existing) {
+    const { data: projects, error: countError } = await supabase
+      .from("project_scores")
+      .select("id")
+      .eq("user_id", user.id);
+
+    if (countError) throw countError;
+
+    if (projects && projects.length >= 5) {
+      throw new Error(
+        "You can only save up to 5 projects. Please delete an existing project first."
+      );
+    }
+  }
+
   const payload = {
     user_id: user.id,
     name,
@@ -112,6 +137,17 @@ export async function loadProjectScores(
     .maybeSingle();
   if (error) throw error;
   return (data?.scores as any) ?? null;
+}
+
+export async function deleteProjectScores(name: string) {
+  const user = await getUser();
+  if (!user) throw new Error("Not authenticated");
+  const { error } = await supabase
+    .from("project_scores")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("name", name);
+  if (error) throw error;
 }
 
 // Admin-only function to list all projects (for admin dashboard)

@@ -27,8 +27,19 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useForm } from "react-hook-form";
-
-import { Save, FolderOpen } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Save, FolderOpen, Trash2 } from "lucide-react";
+import Link from "next/link";
 
 interface ProjectManagerProps {
   email: string | null;
@@ -37,6 +48,7 @@ interface ProjectManagerProps {
   saving: boolean;
   onSave: (projectName: string) => Promise<void>;
   onLoad: (projectName: string) => Promise<void>;
+  onDelete: (projectName: string) => Promise<void>;
 }
 
 type FormValues = {
@@ -50,8 +62,11 @@ export function ProjectManager({
   saving,
   onSave,
   onLoad,
+  onDelete,
 }: ProjectManagerProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<string>("");
 
   const form = useForm<FormValues>({
     defaultValues: { projectName: "" },
@@ -68,10 +83,22 @@ export function ProjectManager({
     }
   };
 
+  const handleDelete = async () => {
+    try {
+      await onDelete(projectToDelete);
+      setDeleteDialogOpen(false);
+      setProjectToDelete("");
+    } catch {
+      // Error handling is done in the parent component
+    }
+  };
+
   if (!email) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <span>Sign in to save and manage projects</span>
+        <Button variant="link" asChild>
+          <Link href="/signin">Sign In To Save Projects</Link>
+        </Button>
       </div>
     );
   }
@@ -140,27 +167,65 @@ export function ProjectManager({
         </DialogContent>
       </Dialog>
 
-      <Select value={selectedProject} onValueChange={onLoad}>
-        <SelectTrigger className="w-48">
-          <div className="flex items-center gap-2">
-            <FolderOpen className="w-4 h-4" />
-            <SelectValue placeholder="Load project" />
-          </div>
-        </SelectTrigger>
-        <SelectContent>
-          {projects.length === 0 ? (
-            <SelectItem disabled value="__none">
-              No saved projects
-            </SelectItem>
-          ) : (
-            projects.map((project) => (
-              <SelectItem key={project.name} value={project.name}>
-                {project.name}
+      <div className="flex items-center gap-1">
+        <Select value={selectedProject} onValueChange={onLoad}>
+          <SelectTrigger className="w-40">
+            <div className="flex items-center gap-2">
+              <FolderOpen className="w-4 h-4" />
+              <SelectValue placeholder="Load project" />
+            </div>
+          </SelectTrigger>
+          <SelectContent>
+            {projects.length === 0 ? (
+              <SelectItem disabled value="__none">
+                No saved projects
               </SelectItem>
-            ))
-          )}
-        </SelectContent>
-      </Select>
+            ) : (
+              projects.map((project) => (
+                <SelectItem key={project.name} value={project.name}>
+                  {project.name}
+                </SelectItem>
+              ))
+            )}
+          </SelectContent>
+        </Select>
+
+        {selectedProject && (
+          <AlertDialog
+            open={deleteDialogOpen}
+            onOpenChange={setDeleteDialogOpen}
+          >
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="px-2"
+                onClick={() => setProjectToDelete(selectedProject)}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Project</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to delete "{projectToDelete}"? This
+                  action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDelete}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+      </div>
     </div>
   );
 }

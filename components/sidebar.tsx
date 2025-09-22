@@ -85,7 +85,7 @@ export function Sidebar({
 
       <Card>
         <CardHeader>
-          <CardTitle>Certification Target</CardTitle>
+          <CardTitle>Certification Target Levels</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {[

@@ -184,6 +184,11 @@ BEGIN
     CREATE POLICY project_scores_update ON public.project_scores FOR UPDATE USING (auth.uid() = user_id);
   END IF;
   IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='project_scores' AND policyname='project_scores_delete'
+  ) THEN
+    CREATE POLICY project_scores_delete ON public.project_scores FOR DELETE USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (
     SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='project_scores' AND policyname='project_scores_admin_all'
   ) THEN
     CREATE POLICY project_scores_admin_all ON public.project_scores FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());

@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/form";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 
 export default function SignUpPage() {
   type FormValues = {
@@ -60,109 +61,121 @@ export default function SignUpPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-2xl">Sign up</CardTitle>
-          <CardDescription>
-            Create a new account to get started with LEED assessment.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="email"
-                rules={{
-                  required: "Please enter your email",
-                  pattern: {
-                    value: /.+@.+\..+/,
-                    message: "Invalid email address",
-                  },
-                }}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="email"
-                        placeholder="you@example.com"
-                        autoComplete="email"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="password"
-                rules={{
-                  required: "Please enter your password",
-                  minLength: {
-                    value: 6,
-                    message: "Password must be at least 6 characters",
-                  },
-                }}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder="Create a password"
-                        autoComplete="new-password"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="confirmPassword"
-                rules={{
-                  required: "Please confirm your password",
-                  validate: (value) =>
-                    value === form.watch("password") ||
-                    "Passwords do not match",
-                }}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Confirm Password</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder="Confirm your password"
-                        autoComplete="new-password"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button
-                type="submit"
-                disabled={form.formState.isSubmitting}
-                className="w-full"
+      <div className="w-full max-w-md relative">
+        <Link
+          href="/"
+          className="absolute -top-12 left-0 flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Home
+        </Link>
+        <Card className="w-full">
+          <CardHeader>
+            <CardTitle className="text-2xl">Sign up</CardTitle>
+            <CardDescription>
+              Create a new account to get started with LEED assessment.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <Form {...form}>
+              <form
+                onSubmit={form.handleSubmit(onSubmit)}
+                className="space-y-4"
               >
-                {form.formState.isSubmitting
-                  ? "Creating account..."
-                  : "Sign up"}
-              </Button>
-            </form>
-          </Form>
-          <div className="mt-4 text-center text-sm">
-            Already have an account?{" "}
-            <Link href="/signin" className="text-primary hover:underline">
-              Sign in
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
+                <FormField
+                  control={form.control}
+                  name="email"
+                  rules={{
+                    required: "Please enter your email",
+                    pattern: {
+                      value: /.+@.+\..+/,
+                      message: "Invalid email address",
+                    },
+                  }}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="email"
+                          placeholder="you@example.com"
+                          autoComplete="email"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="password"
+                  rules={{
+                    required: "Please enter your password",
+                    minLength: {
+                      value: 6,
+                      message: "Password must be at least 6 characters",
+                    },
+                  }}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="password"
+                          placeholder="Create a password"
+                          autoComplete="new-password"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="confirmPassword"
+                  rules={{
+                    required: "Please confirm your password",
+                    validate: (value) =>
+                      value === form.watch("password") ||
+                      "Passwords do not match",
+                  }}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Confirm Password</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="password"
+                          placeholder="Confirm your password"
+                          autoComplete="new-password"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button
+                  type="submit"
+                  disabled={form.formState.isSubmitting}
+                  className="w-full"
+                >
+                  {form.formState.isSubmitting
+                    ? "Creating account..."
+                    : "Sign up"}
+                </Button>
+              </form>
+            </Form>
+            <div className="mt-4 text-center text-sm">
+              Already have an account?{" "}
+              <Link href="/signin" className="text-primary hover:underline">
+                Sign in
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

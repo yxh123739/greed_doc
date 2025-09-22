@@ -14,7 +14,9 @@ import {
   listProjects,
   saveProjectScores,
   loadProjectScores,
+  deleteProjectScores,
 } from "@/lib/supabase/queries";
+import { supabase } from "@/lib/supabase/client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import {
@@ -71,14 +73,54 @@ export default function LEEDSurvey() {
         for (const c of mapped) initial[c.id] = 0;
         return initial;
       });
-      // auth state and projects
+    })();
+  }, []);
+
+  // Separate effect for auth state monitoring
+  useEffect(() => {
+    let mounted = true;
+
+    // Get initial auth state
+    const getInitialAuth = async () => {
       const user = await getUser();
+      if (mounted) {
+        setEmail(user?.email ?? null);
+        if (user) {
+          const rows = await listProjects();
+          setProjects(rows.map((r) => ({ name: r.name })));
+        } else {
+          setProjects([]);
+          setSelectedProject("");
+        }
+      }
+    };
+
+    getInitialAuth();
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+
+      const user = session?.user ?? null;
       setEmail(user?.email ?? null);
+
       if (user) {
+        // User signed in - load their projects
         const rows = await listProjects();
         setProjects(rows.map((r) => ({ name: r.name })));
+      } else {
+        // User signed out - clear projects and selection
+        setProjects([]);
+        setSelectedProject("");
       }
-    })();
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const totalScore = useMemo(() => {
@@ -216,6 +258,20 @@ export default function LEEDSurvey() {
     }
   };
 
+  const handleDelete = async (name: string) => {
+    try {
+      await deleteProjectScores(name);
+      toast(`Project "${name}" deleted successfully`);
+      const rows = await listProjects();
+      setProjects(rows.map((r) => ({ name: r.name })));
+      if (selectedProject === name) {
+        setSelectedProject("");
+      }
+    } catch (e: any) {
+      toast(e.message || String(e));
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -244,6 +300,7 @@ export default function LEEDSurvey() {
               saving={saving}
               onSave={handleSave}
               onLoad={handleLoad}
+              onDelete={handleDelete}
             />
           ) : (
             <div className="lg:col-span-2">
