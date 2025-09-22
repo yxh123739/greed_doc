@@ -283,7 +283,7 @@ export default function LEEDSurvey() {
             LEED v5 BD+C Target Finder
           </h2>
           <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-            Define a realistic LEED goal based on your project’s design and performance.
+            Define a realistic LEED target based on your project’s design and performance.
           </p>
         </div>
 
