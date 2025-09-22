@@ -48,7 +48,7 @@ export function Sidebar({
         <CardHeader>
           <CardTitle>LEED Certification Target</CardTitle>
           <CardDescription>
-            Based on your current project specifications
+            Based on your current project performance
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
