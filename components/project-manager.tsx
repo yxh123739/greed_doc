@@ -209,8 +209,8 @@ export function ProjectManager({
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete Project</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Are you sure you want to delete "{projectToDelete}"? This
-                  action cannot be undone.
+                  Are you sure you want to delete &quot;{projectToDelete}&quot;?
+                  This action cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

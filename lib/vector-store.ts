@@ -1,10 +1,7 @@
 // SimpleVectorStore.ts
-import { FeatureExtractionPipeline, pipeline, env } from "@xenova/transformers";
+import OpenAI from "openai";
 import path from "path";
 import fs from "fs";
-
-env.localModelPath = path.resolve("./public/models");
-env.allowRemoteModels = false;
 
 const STORE_PATH = path.resolve("./public/vector_store.json");
 
@@ -21,15 +18,9 @@ interface VectorDocument extends Document {
   embedding?: number[];
 }
 
-let embeddingPipeline: FeatureExtractionPipeline | null = null;
-
-async function getEmbeddingPipeline() {
-  if (!embeddingPipeline) {
-    const modelName = "all-MiniLM-L6-v2";
-    embeddingPipeline = await pipeline("feature-extraction", modelName);
-  }
-  return embeddingPipeline;
-}
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 export class SimpleVectorStore {
   private documents: VectorDocument[] = [];
@@ -143,24 +134,31 @@ export class SimpleVectorStore {
   }
 
   private async getBatchEmbeddings(texts: string[]): Promise<number[][]> {
-    const extractor = await getEmbeddingPipeline();
-    const results: number[][] = [];
-
-    for (const text of texts) {
-      const output = await extractor(text, {
-        pooling: "mean",
-        normalize: true,
+    try {
+      const response = await openai.embeddings.create({
+        model: "text-embedding-3-small",
+        input: texts,
       });
 
-      results.push(Array.from(output.data));
+      return response.data.map((item) => item.embedding);
+    } catch (error) {
+      console.error("OpenAI embedding error:", error);
+      throw error;
     }
-    return results;
   }
 
   private async getEmbedding(text: string): Promise<number[]> {
-    const extractor = await getEmbeddingPipeline();
-    const output = await extractor(text, { pooling: "mean", normalize: true });
-    return Array.from(output.data);
+    try {
+      const response = await openai.embeddings.create({
+        model: "text-embedding-3-small",
+        input: text,
+      });
+
+      return response.data[0].embedding;
+    } catch (error) {
+      console.error("OpenAI embedding error:", error);
+      throw error;
+    }
   }
 
   private cosineSimilarity(a: number[], b: number[]): number {
