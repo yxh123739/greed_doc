@@ -74,10 +74,7 @@ export function Sidebar({
             </Badge>
 
             <p className="text-sm text-muted-foreground max-w-sm mx-auto text-left">
-              Disclaimer: This assessment evaluates feasibility for LEED credits
-              using simplified heuristics. Actual eligibility and certification
-              depend on design integration, detailed documentation, and
-              USGBC/GBCI review.
+              Disclaimer: This assessment evaluates your project’s LEED feasibility using simplified analysis. Final eligibility depends on design integration, documentation, and USGBC/GBCI review.
             </p>
           </div>
         </CardContent>
