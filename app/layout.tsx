@@ -5,8 +5,8 @@ import { ThemeProvider } from "next-themes";
 import { Analytics } from "@vercel/analytics/next";
 import { Toaster } from "@/components/ui/sonner";
 export const metadata: Metadata = {
-  title: "LEED Score Calculator",
-  description: "Calculate your LEED score with this tool",
+  title: "LEED Target Finder",
+  description: "Assess your project’s LEED feasibility with ease",
 };
 
 export default function RootLayout({
