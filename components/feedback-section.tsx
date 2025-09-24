@@ -153,7 +153,7 @@ export function FeedbackSection() {
           We&apos;d love to hear your feedback!
         </h2>
         <p className="text-muted-foreground text-center mb-12">
-          Tell us about yourself and the LEED tools you're interested in.
+          Select your role and the LEED tools you&apos;re interested in.
         </p>
 
         <Card>
