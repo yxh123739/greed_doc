@@ -24,9 +24,14 @@ export async function fetchCategories(): Promise<DbCategory[]> {
 }
 
 export interface FeedbackInsert {
+  first_name: string;
+  last_name: string;
+  email: string;
+  company_name?: string | null;
   role: string;
   role_other?: string | null;
   tools?: Record<string, unknown> | null;
+  privacy_consent?: boolean;
 }
 
 export async function submitFeedback(payload: FeedbackInsert) {
