@@ -19,9 +19,14 @@ create table if not exists public.categories (
 create table if not exists public.feedback (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
+  first_name text not null,
+  last_name text not null,
+  email text not null,
+  company_name text,
   role text not null,
   role_other text,
-  tools jsonb
+  tools jsonb,
+  privacy_consent boolean default false
 );
 
 -- Helpful indexes
