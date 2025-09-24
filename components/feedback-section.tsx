@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { submitFeedback } from "@/lib/supabase/queries";
 import { useForm } from "react-hook-form";
 import {
@@ -21,30 +22,60 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { toast } from "sonner";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
 
-type FormValues = {
-  role:
-    | "Architect/Designer"
-    | "Engineer"
-    | "Consultant"
-    | "Contractor"
-    | "Owner/Developer"
-    | "Other";
-  roleOther?: string;
-  tools?: {
-    feasibility?: boolean;
-    checklists?: boolean;
-    automation?: boolean;
-    pm?: boolean; // credit tracking dashboard & task list
-    quickwins?: boolean;
-    other?: boolean;
-    other_text?: string;
-  };
-};
+const feedbackSchema = z.object({
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  email: z.string().email("Please enter a valid email address"),
+  companyName: z.string().optional(),
+  role: z.enum(
+    [
+      "Architect/Designer",
+      "Engineer",
+      "Consultant",
+      "Contractor",
+      "Owner/Developer",
+      "Other",
+    ],
+    {
+      message: "Please select your role",
+    }
+  ),
+  roleOther: z.string().optional(),
+  tools: z
+    .object({
+      feasibility: z.boolean().optional(),
+      checklists: z.boolean().optional(),
+      automation: z.boolean().optional(),
+      pm: z.boolean().optional(),
+      quickwins: z.boolean().optional(),
+      other: z.boolean().optional(),
+      other_text: z.string().optional(),
+    })
+    .refine(
+      (tools) => {
+        // At least one tool must be selected
+        return Object.values(tools).some((value) => value === true);
+      },
+      {
+        message: "Please select at least one LEED tool",
+      }
+    ),
+  privacyConsent: z.boolean().optional(),
+});
+
+type FormValues = z.infer<typeof feedbackSchema>;
 
 export function FeedbackSection() {
   const form = useForm<FormValues>({
+    resolver: zodResolver(feedbackSchema),
     defaultValues: {
+      firstName: "",
+      lastName: "",
+      email: "",
+      companyName: "",
       role: undefined as unknown as FormValues["role"],
       roleOther: "",
       tools: {
@@ -56,6 +87,7 @@ export function FeedbackSection() {
         other: false,
         other_text: "",
       },
+      privacyConsent: false,
     },
   });
 
@@ -64,11 +96,16 @@ export function FeedbackSection() {
 
   const onSubmit = async (values: FormValues) => {
     const payload = {
+      first_name: values.firstName,
+      last_name: values.lastName,
+      email: values.email,
+      company_name: values.companyName || null,
       role: values.role,
       role_other: values.role === "Other" ? values.roleOther || null : null,
       tools: {
         ...values.tools,
       } as Record<string, unknown>,
+      privacy_consent: values.privacyConsent,
     };
     try {
       await submitFeedback(payload);
@@ -116,7 +153,7 @@ export function FeedbackSection() {
           We&apos;d love to hear your feedback!
         </h2>
         <p className="text-muted-foreground text-center mb-12">
-          Select your role and the LEED tools you’re interested in.
+          Tell us about yourself and the LEED tools you're interested in.
         </p>
 
         <Card>
@@ -126,6 +163,71 @@ export function FeedbackSection() {
                 onSubmit={form.handleSubmit(onSubmit)}
                 className="space-y-8"
               >
+                {/* Personal Information */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <FormField
+                    control={form.control}
+                    name="firstName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          <span className="text-destructive">*</span> First Name
+                        </FormLabel>
+                        <FormControl>
+                          <Input placeholder="First Name" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="lastName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          <span className="text-destructive">*</span> Last Name
+                        </FormLabel>
+                        <FormControl>
+                          <Input placeholder="Last Name" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          <span className="text-destructive">*</span> Email
+                        </FormLabel>
+                        <FormControl>
+                          <Input placeholder="you@company.com" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="companyName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Company Name (Optional)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Company Name" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
                 {/* Role */}
                 <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
                   <FormField
@@ -257,7 +359,36 @@ export function FeedbackSection() {
                       />
                     )}
                   </div>
+                  {/* Display tools validation error */}
+                  {form.formState.errors.tools && (
+                    <p className="text-sm font-medium text-destructive">
+                      {form.formState.errors.tools.message}
+                    </p>
+                  )}
                 </div>
+
+                {/* Privacy Consent */}
+                <FormField
+                  control={form.control}
+                  name="privacyConsent"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start gap-3 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          checked={!!field.value}
+                          onCheckedChange={(v) => field.onChange(!!v)}
+                        />
+                      </FormControl>
+                      <FormLabel className="font-normal">
+                        <span className="text-sm leading-6">
+                          GreenDoc respects your privacy. By checking this box,
+                          you consent to GreenDoc using your information to
+                          contact you about your feedback.
+                        </span>
+                      </FormLabel>
+                    </FormItem>
+                  )}
+                />
 
                 <div className="pt-2">
                   <Button
