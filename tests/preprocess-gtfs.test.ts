@@ -263,4 +263,67 @@ describe("mergeNSPlatforms", () => {
     expect(merged.MISC.stopName).toBe("Special Stop");
     expect(Object.keys(merged)).toEqual(["MISC"]);
   });
+
+  it("preserves passthrough routes when an unsuffixed stop coexists with N/S platforms", () => {
+    const raw: StopTripsIndex = {
+      "555": {
+        stopName: "Complex Station",
+        lat: 40.5,
+        lng: -73.5,
+        routes: {
+          X: {
+            routeName: "X",
+            routeType: 1,
+            directions: [0],
+            dir0WeekdayMin: 42,
+            dir0WeekendMax: 30,
+            dir1WeekdayMin: 0,
+            dir1WeekendMax: 0,
+          },
+        },
+      },
+      "555N": {
+        stopName: "Complex Station N",
+        lat: 40.5001,
+        lng: -73.5001,
+        routes: {
+          "1": {
+            routeName: "1",
+            routeType: 1,
+            directions: [0],
+            dir0WeekdayMin: 111,
+            dir0WeekendMax: 90,
+            dir1WeekdayMin: 0,
+            dir1WeekendMax: 0,
+          },
+        },
+      },
+      "555S": {
+        stopName: "Complex Station S",
+        lat: 40.4999,
+        lng: -73.4999,
+        routes: {
+          "1": {
+            routeName: "1",
+            routeType: 1,
+            directions: [1],
+            dir0WeekdayMin: 0,
+            dir0WeekendMax: 0,
+            dir1WeekdayMin: 112,
+            dir1WeekendMax: 91,
+          },
+        },
+      },
+    };
+
+    const merged = mergeNSPlatforms(raw);
+
+    expect(Object.keys(merged)).toEqual(["555"]);
+    expect(merged["555"].stopName).toBe("Complex Station N");
+    expect(merged["555"].routes["1"].directions).toEqual([0, 1]);
+    expect(merged["555"].routes["1"].dir0WeekdayMin).toBe(111);
+    expect(merged["555"].routes["1"].dir1WeekdayMin).toBe(112);
+    expect(merged["555"].routes.X.directions).toEqual([0]);
+    expect(merged["555"].routes.X.dir0WeekdayMin).toBe(42);
+  });
 });

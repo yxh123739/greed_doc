@@ -192,10 +192,6 @@ export function mergeNSPlatforms(raw: StopTripsIndex): StopTripsIndex {
   const merged: StopTripsIndex = { ...passthroughStops };
 
   for (const [baseId, group] of platformGroups.entries()) {
-    if (merged[baseId]) {
-      continue;
-    }
-
     const primary = group.n ?? group.s;
     if (!primary) continue;
 
@@ -227,12 +223,25 @@ export function mergeNSPlatforms(raw: StopTripsIndex): StopTripsIndex {
       mergedRoutes[routeId] = (nRoute ?? sRoute)!;
     }
 
-    merged[baseId] = {
+    const platformMerged: StopData = {
       stopName: primary.stopName,
       lat: primary.lat,
       lng: primary.lng,
       routes: mergedRoutes,
     };
+
+    const existing = merged[baseId];
+    merged[baseId] = existing
+      ? {
+          stopName: platformMerged.stopName,
+          lat: platformMerged.lat,
+          lng: platformMerged.lng,
+          routes: {
+            ...existing.routes,
+            ...platformMerged.routes,
+          },
+        }
+      : platformMerged;
   }
 
   return merged;
