@@ -1,31 +1,53 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
+  buildStationList,
   calculateTransitScore,
-  findNearbyGtfsStops,
   computeRouteTrips,
-  deduplicateRoutes,
+  findNearbyGtfsStops,
+  scoreTransit,
 } from "@/lib/transit-scoring";
-import type { StopTripsIndex, StopData } from "@/lib/transit-types";
+import type { ScoredStation, StopData, StopTripsIndex } from "@/lib/transit-types";
 
-function makeSubwayStop(overrides?: Partial<StopData>): StopData {
+function makeStation(
+  routeConfigs: {
+    routeId: string;
+    routeName: string;
+    routeType: number;
+    directions?: number[];
+    dir0WeekdayMin: number;
+    dir0WeekendMax: number;
+    dir1WeekdayMin: number;
+    dir1WeekendMax: number;
+  }[]
+): StopData {
+  const routes: StopData["routes"] = {};
+
+  for (const route of routeConfigs) {
+    routes[route.routeId] = {
+      routeName: route.routeName,
+      routeType: route.routeType,
+      directions: route.directions ?? [0, 1],
+      dir0WeekdayMin: route.dir0WeekdayMin,
+      dir0WeekendMax: route.dir0WeekendMax,
+      dir1WeekdayMin: route.dir1WeekdayMin,
+      dir1WeekendMax: route.dir1WeekendMax,
+    };
+  }
+
   return {
     stopName: "Test Station",
     lat: 40.768,
     lng: -73.982,
-    parentStation: "100",
-    routes: {
-      "1": {
-        routeName: "1",
-        routeType: 1,
-        directions: [0, 1],
-        dir0WeekdayMin: 142,
-        dir0WeekendMax: 98,
-        dir1WeekdayMin: 138,
-        dir1WeekendMax: 95,
-      },
-    },
-    ...overrides,
+    routes,
   };
+}
+
+function makeScoredStation(
+  stopId: string,
+  walkingDistanceMi: number,
+  stop: StopData
+): ScoredStation {
+  return { stopId, walkingDistanceMi, stop };
 }
 
 describe("calculateTransitScore", () => {
@@ -57,13 +79,6 @@ describe("calculateTransitScore", () => {
     });
   });
 
-  it("returns 0 points when weekday is high but weekend is below all thresholds", () => {
-    expect(calculateTransitScore(400, 25)).toEqual({
-      points: 0,
-      threshold: null,
-    });
-  });
-
   it("returns 0 points for zero trips", () => {
     expect(calculateTransitScore(0, 0)).toEqual({
       points: 0,
@@ -71,100 +86,400 @@ describe("calculateTransitScore", () => {
     });
   });
 
-  it("returns lower tier when only weekend fails higher tier (PDF M5 example: 60 weekday, 0 weekend)", () => {
-    expect(calculateTransitScore(60, 0)).toEqual({
+  it("returns 0 points when weekday is high but weekend is below all thresholds", () => {
+    expect(calculateTransitScore(400, 25)).toEqual({
       points: 0,
       threshold: null,
     });
   });
 });
 
+describe("computeRouteTrips", () => {
+  it("takes min direction for weekday and weekend", () => {
+    expect(
+      computeRouteTrips({
+        routeName: "1",
+        routeType: 1,
+        directions: [0, 1],
+        dir0WeekdayMin: 142,
+        dir0WeekendMax: 98,
+        dir1WeekdayMin: 138,
+        dir1WeekendMax: 95,
+      })
+    ).toEqual({ weekdayTrips: 138, weekendTrips: 95 });
+  });
+
+  it("returns null for single-direction route", () => {
+    expect(
+      computeRouteTrips({
+        routeName: "X",
+        routeType: 1,
+        directions: [0],
+        dir0WeekdayMin: 100,
+        dir0WeekendMax: 50,
+        dir1WeekdayMin: 0,
+        dir1WeekendMax: 0,
+      })
+    ).toBeNull();
+  });
+});
+
 describe("findNearbyGtfsStops", () => {
-  it("includes subway stops within 0.5 mi", () => {
+  it("includes subway stops within 0.5 mi and returns them sorted by distance", () => {
     const index: StopTripsIndex = {
-      "101N": makeSubwayStop({ lat: 40.768, lng: -73.982 }),
-    };
-    const center = { lat: 40.767, lng: -73.981 };
-    const result = findNearbyGtfsStops(index, center);
-    expect(result).toHaveLength(1);
-    expect(result[0].stopId).toBe("101N");
-  });
-
-  it("excludes subway stops beyond 0.5 mi", () => {
-    const index: StopTripsIndex = {
-      "101N": makeSubwayStop({ lat: 40.780, lng: -73.982 }),
-    };
-    const center = { lat: 40.768, lng: -73.982 };
-    const result = findNearbyGtfsStops(index, center);
-    expect(result).toHaveLength(0);
-  });
-
-  it("excludes bus stops beyond 0.25 mi", () => {
-    const index: StopTripsIndex = {
-      "B1": {
-        stopName: "Bus Stop",
-        lat: 40.7725,
+      A: {
+        stopName: "Farther",
+        lat: 40.77,
         lng: -73.982,
-        parentStation: "",
         routes: {
-          M5: {
-            routeName: "M5",
-            routeType: 3,
+          "1": {
+            routeName: "1",
+            routeType: 1,
             directions: [0, 1],
-            dir0WeekdayMin: 60,
-            dir0WeekendMax: 0,
-            dir1WeekdayMin: 60,
-            dir1WeekendMax: 0,
+            dir0WeekdayMin: 100,
+            dir0WeekendMax: 80,
+            dir1WeekdayMin: 100,
+            dir1WeekendMax: 80,
+          },
+        },
+      },
+      B: {
+        stopName: "Closer",
+        lat: 40.7685,
+        lng: -73.982,
+        routes: {
+          "2": {
+            routeName: "2",
+            routeType: 1,
+            directions: [0, 1],
+            dir0WeekdayMin: 100,
+            dir0WeekendMax: 80,
+            dir1WeekdayMin: 100,
+            dir1WeekendMax: 80,
           },
         },
       },
     };
-    const center = { lat: 40.768, lng: -73.982 }; // ~0.31 mi away
-    const result = findNearbyGtfsStops(index, center);
+
+    const result = findNearbyGtfsStops(index, { lat: 40.768, lng: -73.982 });
+    expect(result).toHaveLength(2);
+    expect(result[0].stopId).toBe("B");
+    expect(result[1].stopId).toBe("A");
+  });
+
+  it("excludes subway stops beyond 0.5 mi", () => {
+    const index: StopTripsIndex = {
+      A: {
+        stopName: "Far Away",
+        lat: 40.78,
+        lng: -73.982,
+        routes: {
+          "1": {
+            routeName: "1",
+            routeType: 1,
+            directions: [0, 1],
+            dir0WeekdayMin: 100,
+            dir0WeekendMax: 80,
+            dir1WeekdayMin: 100,
+            dir1WeekendMax: 80,
+          },
+        },
+      },
+    };
+
+    const result = findNearbyGtfsStops(index, { lat: 40.768, lng: -73.982 });
     expect(result).toHaveLength(0);
   });
 });
 
-describe("computeRouteTrips", () => {
-  it("takes min direction for weekday, min direction for weekend", () => {
-    const route = {
-      routeName: "1",
-      routeType: 1,
-      directions: [0, 1],
-      dir0WeekdayMin: 142,
-      dir0WeekendMax: 98,
-      dir1WeekdayMin: 138,
-      dir1WeekendMax: 95,
-    };
-    const result = computeRouteTrips(route);
-    expect(result).toEqual({ weekdayTrips: 138, weekendTrips: 95 });
+describe("scoreTransit", () => {
+  it("scores a single station with multiple routes", () => {
+    const stops: ScoredStation[] = [
+      makeScoredStation(
+        "120",
+        0.15,
+        makeStation([
+          {
+            routeId: "1",
+            routeName: "1",
+            routeType: 1,
+            dir0WeekdayMin: 231,
+            dir0WeekendMax: 186,
+            dir1WeekdayMin: 231,
+            dir1WeekendMax: 186,
+          },
+          {
+            routeId: "2",
+            routeName: "2",
+            routeType: 1,
+            dir0WeekdayMin: 162,
+            dir0WeekendMax: 139,
+            dir1WeekdayMin: 162,
+            dir1WeekendMax: 139,
+          },
+        ])
+      ),
+    ];
+
+    const result = scoreTransit(stops);
+    expect(result.totalWeekdayTrips).toBe(393);
+    expect(result.totalWeekendTrips).toBe(325);
+    expect(result.points).toBe(4);
+    expect(result.qualifyingStopIds).toEqual(["120"]);
   });
 
-  it("returns null for single-direction route (no paired service)", () => {
-    const route = {
-      routeName: "X",
-      routeType: 1,
-      directions: [0],
-      dir0WeekdayMin: 100,
-      dir0WeekendMax: 50,
-      dir1WeekdayMin: 0,
-      dir1WeekendMax: 0,
-    };
-    const result = computeRouteTrips(route);
-    expect(result).toBeNull();
+  it("accumulates across multiple stations and deduplicates by routeId", () => {
+    const stops: ScoredStation[] = [
+      makeScoredStation(
+        "A",
+        0.1,
+        makeStation([
+          {
+            routeId: "1",
+            routeName: "1",
+            routeType: 1,
+            dir0WeekdayMin: 50,
+            dir0WeekendMax: 30,
+            dir1WeekdayMin: 50,
+            dir1WeekendMax: 30,
+          },
+        ])
+      ),
+      makeScoredStation(
+        "B",
+        0.2,
+        makeStation([
+          {
+            routeId: "1",
+            routeName: "1",
+            routeType: 1,
+            dir0WeekdayMin: 60,
+            dir0WeekendMax: 40,
+            dir1WeekdayMin: 60,
+            dir1WeekendMax: 40,
+          },
+          {
+            routeId: "2",
+            routeName: "2",
+            routeType: 1,
+            dir0WeekdayMin: 80,
+            dir0WeekendMax: 50,
+            dir1WeekdayMin: 80,
+            dir1WeekendMax: 50,
+          },
+        ])
+      ),
+    ];
+
+    const result = scoreTransit(stops);
+    expect(result.totalWeekdayTrips).toBe(130);
+    expect(result.totalWeekendTrips).toBe(80);
+    expect(result.qualifyingStopIds).toEqual(["A", "B"]);
+    expect(result.qualifyingRoutes).toHaveLength(2);
+    expect(result.qualifyingRoutes.find((route) => route.routeId === "1")?.stopId).toBe("A");
+    expect(result.qualifyingRoutes.find((route) => route.routeId === "2")?.stopId).toBe("B");
+  });
+
+  it("stops early when 4 points are reached", () => {
+    const stops: ScoredStation[] = [
+      makeScoredStation(
+        "X",
+        0.1,
+        makeStation([
+          {
+            routeId: "A",
+            routeName: "A",
+            routeType: 1,
+            dir0WeekdayMin: 200,
+            dir0WeekendMax: 120,
+            dir1WeekdayMin: 200,
+            dir1WeekendMax: 120,
+          },
+          {
+            routeId: "B",
+            routeName: "B",
+            routeType: 1,
+            dir0WeekdayMin: 200,
+            dir0WeekendMax: 120,
+            dir1WeekdayMin: 200,
+            dir1WeekendMax: 120,
+          },
+        ])
+      ),
+      makeScoredStation(
+        "Y",
+        0.3,
+        makeStation([
+          {
+            routeId: "C",
+            routeName: "C",
+            routeType: 1,
+            dir0WeekdayMin: 100,
+            dir0WeekendMax: 80,
+            dir1WeekdayMin: 100,
+            dir1WeekendMax: 80,
+          },
+        ])
+      ),
+    ];
+
+    const result = scoreTransit(stops);
+    expect(result.points).toBe(4);
+    expect(result.qualifyingStopIds).toEqual(["X"]);
+    expect(result.qualifyingRoutes.find((route) => route.routeId === "C")).toBeUndefined();
+  });
+
+  it("skips single-direction routes", () => {
+    const stops: ScoredStation[] = [
+      makeScoredStation(
+        "A",
+        0.1,
+        makeStation([
+          {
+            routeId: "1",
+            routeName: "1",
+            routeType: 1,
+            directions: [0],
+            dir0WeekdayMin: 200,
+            dir0WeekendMax: 150,
+            dir1WeekdayMin: 200,
+            dir1WeekendMax: 150,
+          },
+        ])
+      ),
+    ];
+
+    const result = scoreTransit(stops);
+    expect(result.totalWeekdayTrips).toBe(0);
+    expect(result.totalWeekendTrips).toBe(0);
+    expect(result.qualifyingRoutes).toHaveLength(0);
+    expect(result.qualifyingStopIds).toEqual([]);
+  });
+
+  it("returns zeroed result for empty input", () => {
+    const result = scoreTransit([]);
+    expect(result).toEqual({
+      qualifyingRoutes: [],
+      qualifyingStopIds: [],
+      totalWeekdayTrips: 0,
+      totalWeekendTrips: 0,
+      points: 0,
+      threshold: null,
+    });
+  });
+
+  it("does not mark a station as qualifying if all its routes were already counted", () => {
+    const stops: ScoredStation[] = [
+      makeScoredStation(
+        "A",
+        0.1,
+        makeStation([
+          {
+            routeId: "1",
+            routeName: "1",
+            routeType: 1,
+            dir0WeekdayMin: 50,
+            dir0WeekendMax: 20,
+            dir1WeekdayMin: 50,
+            dir1WeekendMax: 20,
+          },
+        ])
+      ),
+      makeScoredStation(
+        "B",
+        0.2,
+        makeStation([
+          {
+            routeId: "1",
+            routeName: "1",
+            routeType: 1,
+            dir0WeekdayMin: 60,
+            dir0WeekendMax: 25,
+            dir1WeekdayMin: 60,
+            dir1WeekendMax: 25,
+          },
+        ])
+      ),
+    ];
+
+    const result = scoreTransit(stops);
+    expect(result.qualifyingStopIds).toEqual(["A"]);
+    expect(result.totalWeekdayTrips).toBe(50);
+    expect(result.totalWeekendTrips).toBe(20);
   });
 });
 
-describe("deduplicateRoutes", () => {
-  it("keeps only the stop with highest weekday trips for the same route", () => {
-    const candidates = [
-      { routeId: "1", routeName: "1", routeType: 1, stopId: "A", stopName: "Stop A", weekdayTrips: 100, weekendTrips: 80 },
-      { routeId: "1", routeName: "1", routeType: 1, stopId: "B", stopName: "Stop B", weekdayTrips: 120, weekendTrips: 90 },
-      { routeId: "A", routeName: "A", routeType: 1, stopId: "A", stopName: "Stop A", weekdayTrips: 150, weekendTrips: 110 },
+describe("buildStationList", () => {
+  it("returns qualifyingStations and allNearbyStations with counted routes only for paired-service stops", () => {
+    const stops: ScoredStation[] = [
+      makeScoredStation(
+        "A",
+        0.1,
+        makeStation([
+          {
+            routeId: "1",
+            routeName: "1",
+            routeType: 1,
+            dir0WeekdayMin: 50,
+            dir0WeekendMax: 20,
+            dir1WeekdayMin: 50,
+            dir1WeekendMax: 20,
+          },
+          {
+            routeId: "2",
+            routeName: "2",
+            routeType: 1,
+            dir0WeekdayMin: 30,
+            dir0WeekendMax: 10,
+            dir1WeekdayMin: 30,
+            dir1WeekendMax: 10,
+          },
+        ])
+      ),
+      makeScoredStation(
+        "B",
+        0.2,
+        makeStation([
+          {
+            routeId: "X",
+            routeName: "X",
+            routeType: 1,
+            directions: [0],
+            dir0WeekdayMin: 40,
+            dir0WeekendMax: 20,
+            dir1WeekdayMin: 0,
+            dir1WeekendMax: 0,
+          },
+        ])
+      ),
     ];
-    const result = deduplicateRoutes(candidates);
-    expect(result).toHaveLength(2);
-    expect(result.find((r) => r.routeId === "1")?.stopId).toBe("B");
-    expect(result.find((r) => r.routeId === "A")?.stopId).toBe("A");
+
+    const scoreResult = {
+      qualifyingRoutes: [
+        {
+          routeId: "1",
+          routeName: "1",
+          routeType: 1,
+          stopId: "A",
+          stopName: "Test Station",
+          weekdayTrips: 50,
+          weekendTrips: 20,
+        },
+      ],
+      qualifyingStopIds: ["A"],
+      totalWeekdayTrips: 50,
+      totalWeekendTrips: 20,
+      points: 1,
+      threshold: { weekday: 72, weekend: 30 },
+    };
+
+    const result = buildStationList(stops, scoreResult);
+    expect(result.allNearbyStations).toHaveLength(1);
+    expect(result.qualifyingStations).toHaveLength(1);
+    expect(result.allNearbyStations[0].stopId).toBe("A");
+    expect(result.allNearbyStations[0].stationType).toBe("subway");
+    expect(result.allNearbyStations[0].routes).toHaveLength(2);
+    expect(result.allNearbyStations[0].routes.find((route) => route.routeId === "1")?.counted).toBe(true);
+    expect(result.allNearbyStations[0].routes.find((route) => route.routeId === "2")?.counted).toBe(false);
   });
 });
