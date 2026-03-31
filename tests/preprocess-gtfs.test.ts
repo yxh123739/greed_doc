@@ -76,3 +76,161 @@ describe("aggregateStopTrips", () => {
     expect(route1.dir0WeekendMax).toBe(1);
   });
 });
+
+describe("mergeNSPlatforms", () => {
+  it("merges N and S platforms into a single station with both directions", () => {
+    const raw: StopTripsIndex = {
+      "120N": {
+        stopName: "96 St",
+        lat: 40.7936,
+        lng: -73.9722,
+        routes: {
+          "1": {
+            routeName: "1",
+            routeType: 1,
+            directions: [0],
+            dir0WeekdayMin: 231,
+            dir0WeekendMax: 186,
+            dir1WeekdayMin: 0,
+            dir1WeekendMax: 0,
+          },
+        },
+      },
+      "120S": {
+        stopName: "96 St",
+        lat: 40.7934,
+        lng: -73.9723,
+        routes: {
+          "1": {
+            routeName: "1",
+            routeType: 1,
+            directions: [1],
+            dir0WeekdayMin: 0,
+            dir0WeekendMax: 0,
+            dir1WeekdayMin: 229,
+            dir1WeekendMax: 184,
+          },
+        },
+      },
+    };
+
+    const merged = mergeNSPlatforms(raw);
+
+    expect(Object.keys(merged)).toEqual(["120"]);
+    expect(merged["120"].stopName).toBe("96 St");
+    expect(merged["120"].lat).toBe(40.7936);
+    expect(merged["120"].lng).toBe(-73.9722);
+    expect(merged["120"].routes["1"].directions).toEqual([0, 1]);
+    expect(merged["120"].routes["1"].dir0WeekdayMin).toBe(231);
+    expect(merged["120"].routes["1"].dir1WeekdayMin).toBe(229);
+  });
+
+  it("handles unpaired N-only station and keeps single direction", () => {
+    const raw: StopTripsIndex = {
+      "711N": {
+        stopName: "69 St",
+        lat: 40.123,
+        lng: -73.456,
+        routes: {
+          R: {
+            routeName: "R",
+            routeType: 1,
+            directions: [0],
+            dir0WeekdayMin: 100,
+            dir0WeekendMax: 80,
+            dir1WeekdayMin: 0,
+            dir1WeekendMax: 0,
+          },
+        },
+      },
+    };
+
+    const merged = mergeNSPlatforms(raw);
+
+    expect(Object.keys(merged)).toEqual(["711"]);
+    expect(merged["711"].routes.R.directions).toEqual([0]);
+    expect(merged["711"].routes.R.dir0WeekdayMin).toBe(100);
+  });
+
+  it("merges multi-route station correctly", () => {
+    const raw: StopTripsIndex = {
+      "100N": {
+        stopName: "Times Sq",
+        lat: 40.756,
+        lng: -73.987,
+        routes: {
+          "1": {
+            routeName: "1",
+            routeType: 1,
+            directions: [0],
+            dir0WeekdayMin: 200,
+            dir0WeekendMax: 150,
+            dir1WeekdayMin: 0,
+            dir1WeekendMax: 0,
+          },
+          N: {
+            routeName: "N",
+            routeType: 1,
+            directions: [0],
+            dir0WeekdayMin: 180,
+            dir0WeekendMax: 120,
+            dir1WeekdayMin: 0,
+            dir1WeekendMax: 0,
+          },
+        },
+      },
+      "100S": {
+        stopName: "Times Sq",
+        lat: 40.7559,
+        lng: -73.9869,
+        routes: {
+          "1": {
+            routeName: "1",
+            routeType: 1,
+            directions: [1],
+            dir0WeekdayMin: 0,
+            dir0WeekendMax: 0,
+            dir1WeekdayMin: 195,
+            dir1WeekendMax: 145,
+          },
+          Q: {
+            routeName: "Q",
+            routeType: 1,
+            directions: [1],
+            dir0WeekdayMin: 0,
+            dir0WeekendMax: 0,
+            dir1WeekdayMin: 160,
+            dir1WeekendMax: 100,
+          },
+        },
+      },
+    };
+
+    const merged = mergeNSPlatforms(raw);
+    const station = merged["100"];
+
+    expect(Object.keys(merged)).toEqual(["100"]);
+    expect(station.routes["1"].directions).toEqual([0, 1]);
+    expect(station.routes["1"].dir0WeekdayMin).toBe(200);
+    expect(station.routes["1"].dir1WeekdayMin).toBe(195);
+    expect(station.routes.N.directions).toEqual([0]);
+    expect(station.routes.Q.directions).toEqual([1]);
+  });
+
+  it("passes through stops without N/S suffix unchanged", () => {
+    const raw: StopTripsIndex = {
+      MISC: {
+        stopName: "Special Stop",
+        lat: 40,
+        lng: -73,
+        routes: {},
+      },
+    };
+
+    const merged = mergeNSPlatforms(raw);
+
+    expect(merged.MISC).toBeDefined();
+    expect(merged.MISC.stopName).toBe("Special Stop");
+    expect(Object.keys(merged)).toEqual(["MISC"]);
+  });
+});

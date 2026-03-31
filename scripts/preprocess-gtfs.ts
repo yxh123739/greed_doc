@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
-import type { StopTripsIndex, StopRouteData } from "@/lib/transit-types";
+import type { StopData, StopTripsIndex, StopRouteData } from "@/lib/transit-types";
 
 const GTFS_DIR = path.resolve("public/gtfs_supplemented");
 const OUTPUT_DIR = path.resolve(GTFS_DIR, "index");
@@ -169,6 +169,75 @@ export function aggregateStopTrips(
   return result;
 }
 
+export function mergeNSPlatforms(raw: StopTripsIndex): StopTripsIndex {
+  const groups = new Map<string, { n?: StopData; s?: StopData; other?: StopData }>();
+
+  for (const [stopId, stop] of Object.entries(raw)) {
+    if (stopId.endsWith("N")) {
+      const baseId = stopId.slice(0, -1);
+      const group = groups.get(baseId) ?? {};
+      group.n = stop;
+      groups.set(baseId, group);
+    } else if (stopId.endsWith("S")) {
+      const baseId = stopId.slice(0, -1);
+      const group = groups.get(baseId) ?? {};
+      group.s = stop;
+      groups.set(baseId, group);
+    } else {
+      groups.set(stopId, { other: stop });
+    }
+  }
+
+  const merged: StopTripsIndex = {};
+
+  for (const [baseId, group] of groups.entries()) {
+    if (group.other && !group.n && !group.s) {
+      merged[baseId] = group.other;
+      continue;
+    }
+
+    const primary = group.n ?? group.s;
+    if (!primary) continue;
+
+    const mergedRoutes: Record<string, StopRouteData> = {};
+    const routeIds = new Set<string>([
+      ...Object.keys(group.n?.routes ?? {}),
+      ...Object.keys(group.s?.routes ?? {}),
+    ]);
+
+    for (const routeId of routeIds) {
+      const nRoute = group.n?.routes[routeId];
+      const sRoute = group.s?.routes[routeId];
+
+      if (nRoute && sRoute) {
+        mergedRoutes[routeId] = {
+          routeName: nRoute.routeName,
+          routeType: nRoute.routeType,
+          directions: Array.from(new Set([...nRoute.directions, ...sRoute.directions])).sort(
+            (a, b) => a - b
+          ),
+          dir0WeekdayMin: nRoute.dir0WeekdayMin,
+          dir0WeekendMax: nRoute.dir0WeekendMax,
+          dir1WeekdayMin: sRoute.dir1WeekdayMin,
+          dir1WeekendMax: sRoute.dir1WeekendMax,
+        };
+        continue;
+      }
+
+      mergedRoutes[routeId] = (nRoute ?? sRoute)!;
+    }
+
+    merged[baseId] = {
+      stopName: primary.stopName,
+      lat: primary.lat,
+      lng: primary.lng,
+      routes: mergedRoutes,
+    };
+  }
+
+  return merged;
+}
+
 // --- Stream stop_times.txt ---
 
 async function streamStopTimes(
@@ -255,19 +324,21 @@ async function main() {
       stopName: stopInfo.stopName,
       lat: stopInfo.lat,
       lng: stopInfo.lng,
-      parentStation: stopInfo.parentStation,
       routes: data.routes,
     };
   }
 
-  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-  fs.writeFileSync(OUTPUT_FILE, JSON.stringify(index));
+  console.log("  Merging N/S platforms...");
+  const mergedIndex = mergeNSPlatforms(index);
 
-  const stopCount = Object.keys(index).length;
+  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  fs.writeFileSync(OUTPUT_FILE, JSON.stringify(mergedIndex));
+
+  const stopCount = Object.keys(mergedIndex).length;
   const routeCount = new Set(
-    Object.values(index).flatMap((s) => Object.keys(s.routes))
+    Object.values(mergedIndex).flatMap((s) => Object.keys(s.routes))
   ).size;
-  const fileSizeMb = (Buffer.byteLength(JSON.stringify(index)) / 1024 / 1024).toFixed(1);
+  const fileSizeMb = (Buffer.byteLength(JSON.stringify(mergedIndex)) / 1024 / 1024).toFixed(1);
 
   console.log(`\nDone! Wrote ${OUTPUT_FILE}`);
   console.log(`  ${stopCount} stops, ${routeCount} routes, ${fileSizeMb} MB`);
