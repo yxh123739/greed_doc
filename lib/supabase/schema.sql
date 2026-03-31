@@ -325,3 +325,45 @@ as $$
   where public.is_admin()
   order by p.created_at desc;
 $$;
+
+-- GTFS Transit Data Tables
+
+create table if not exists public.gtfs_stops (
+  stop_id text primary key,
+  stop_name text not null,
+  lat numeric not null,
+  lng numeric not null
+);
+
+create table if not exists public.gtfs_routes (
+  route_id text primary key,
+  route_name text not null,
+  route_type integer not null
+);
+
+create table if not exists public.gtfs_stop_routes (
+  stop_id text references public.gtfs_stops(stop_id) on delete cascade,
+  route_id text references public.gtfs_routes(route_id) on delete cascade,
+  direction_id integer not null,
+  weekday_trips_min integer not null,
+  weekend_trips_max integer not null,
+  primary key (stop_id, route_id, direction_id)
+);
+
+-- RLS Policies (Public Read, Service Role Write)
+alter table public.gtfs_stops enable row level security;
+alter table public.gtfs_routes enable row level security;
+alter table public.gtfs_stop_routes enable row level security;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='gtfs_stops' AND policyname='gtfs_stops_select_all') THEN
+    CREATE POLICY gtfs_stops_select_all ON public.gtfs_stops FOR SELECT USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='gtfs_routes' AND policyname='gtfs_routes_select_all') THEN
+    CREATE POLICY gtfs_routes_select_all ON public.gtfs_routes FOR SELECT USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='gtfs_stop_routes' AND policyname='gtfs_stop_routes_select_all') THEN
+    CREATE POLICY gtfs_stop_routes_select_all ON public.gtfs_stop_routes FOR SELECT USING (true);
+  END IF;
+END$$;
