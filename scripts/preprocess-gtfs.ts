@@ -82,7 +82,7 @@ export function parseTrips(csv: string): Map<string, TripInfo> {
   return map;
 }
 
-function parseStops(csv: string): Map<
+export function parseStops(csv: string): Map<
   string,
   { stopName: string; lat: number; lng: number; locationType: string; parentStation: string }
 > {
@@ -249,22 +249,17 @@ export function mergeNSPlatforms(raw: StopTripsIndex): StopTripsIndex {
 
 // --- Stream stop_times.txt ---
 
-async function streamStopTimes(
-  filePath: string,
+export async function streamStopTimesLines(
+  lines: AsyncIterable<string>,
   trips: Map<string, TripInfo>
 ): Promise<Map<string, Set<string>>> {
   const stopTrips = new Map<string, Set<string>>();
-
-  const rl = readline.createInterface({
-    input: fs.createReadStream(filePath),
-    crlfDelay: Infinity,
-  });
 
   let isHeader = true;
   let tripIdCol = 0;
   let stopIdCol = 1;
 
-  for await (const line of rl) {
+  for await (const line of lines) {
     if (isHeader) {
       const headers = line.split(",").map((h) => h.trim());
       tripIdCol = headers.indexOf("trip_id");
@@ -289,6 +284,17 @@ async function streamStopTimes(
   }
 
   return stopTrips;
+}
+
+async function streamStopTimes(
+  filePath: string,
+  trips: Map<string, TripInfo>
+): Promise<Map<string, Set<string>>> {
+  const rl = readline.createInterface({
+    input: fs.createReadStream(filePath),
+    crlfDelay: Infinity,
+  });
+  return streamStopTimesLines(rl, trips);
 }
 
 // --- Main entry point ---
