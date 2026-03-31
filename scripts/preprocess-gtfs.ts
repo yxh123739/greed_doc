@@ -170,29 +170,29 @@ export function aggregateStopTrips(
 }
 
 export function mergeNSPlatforms(raw: StopTripsIndex): StopTripsIndex {
-  const groups = new Map<string, { n?: StopData; s?: StopData; other?: StopData }>();
+  const platformGroups = new Map<string, { n?: StopData; s?: StopData }>();
+  const passthroughStops: Record<string, StopData> = {};
 
   for (const [stopId, stop] of Object.entries(raw)) {
     if (stopId.endsWith("N")) {
       const baseId = stopId.slice(0, -1);
-      const group = groups.get(baseId) ?? {};
+      const group = platformGroups.get(baseId) ?? {};
       group.n = stop;
-      groups.set(baseId, group);
+      platformGroups.set(baseId, group);
     } else if (stopId.endsWith("S")) {
       const baseId = stopId.slice(0, -1);
-      const group = groups.get(baseId) ?? {};
+      const group = platformGroups.get(baseId) ?? {};
       group.s = stop;
-      groups.set(baseId, group);
+      platformGroups.set(baseId, group);
     } else {
-      groups.set(stopId, { other: stop });
+      passthroughStops[stopId] = stop;
     }
   }
 
-  const merged: StopTripsIndex = {};
+  const merged: StopTripsIndex = { ...passthroughStops };
 
-  for (const [baseId, group] of groups.entries()) {
-    if (group.other && !group.n && !group.s) {
-      merged[baseId] = group.other;
+  for (const [baseId, group] of platformGroups.entries()) {
+    if (merged[baseId]) {
       continue;
     }
 

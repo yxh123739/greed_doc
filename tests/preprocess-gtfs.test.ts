@@ -152,6 +152,34 @@ describe("mergeNSPlatforms", () => {
     expect(merged["711"].routes.R.dir0WeekdayMin).toBe(100);
   });
 
+  it("falls back to S platform when N platform is absent", () => {
+    const raw: StopTripsIndex = {
+      "712S": {
+        stopName: "S-Only Stop",
+        lat: 40.124,
+        lng: -73.457,
+        routes: {
+          T: {
+            routeName: "T",
+            routeType: 1,
+            directions: [1],
+            dir0WeekdayMin: 0,
+            dir0WeekendMax: 0,
+            dir1WeekdayMin: 88,
+            dir1WeekendMax: 66,
+          },
+        },
+      },
+    };
+
+    const merged = mergeNSPlatforms(raw);
+
+    expect(Object.keys(merged)).toEqual(["712"]);
+    expect(merged["712"].stopName).toBe("S-Only Stop");
+    expect(merged["712"].routes.T.directions).toEqual([1]);
+    expect(merged["712"].routes.T.dir1WeekdayMin).toBe(88);
+  });
+
   it("merges multi-route station correctly", () => {
     const raw: StopTripsIndex = {
       "100N": {
