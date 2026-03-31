@@ -1,29 +1,76 @@
-import { readFileSync } from "fs";
-import { join } from "path";
 import { NextRequest, NextResponse } from "next/server";
+import { supabase } from "@/lib/supabase/client";
 import { buildStationList, findNearbyGtfsStops, scoreTransit } from "@/lib/transit-scoring";
 import type {
   ScoredStation,
   StopTripsIndex,
   TransitApiResponse,
+  StopData,
+  StopRouteData,
 } from "@/lib/transit-types";
 
 const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 
-// --- GTFS index (cached at module level) ---
+// --- GTFS index (fetched from Supabase) ---
 
-let gtfsIndex: StopTripsIndex | null = null;
-function getGtfsIndex(): StopTripsIndex {
-  if (!gtfsIndex) {
-    const indexPath = join(process.cwd(), "public/gtfs_supplemented/index/stop-trips.json");
-    try {
-      gtfsIndex = JSON.parse(readFileSync(indexPath, "utf-8")) as StopTripsIndex;
-    } catch {
-      throw new Error("GTFS index not found. Run `pnpm run preprocess-gtfs` first.");
+async function fetchGtfsIndexFromDb(): Promise<StopTripsIndex> {
+  const { data: stopsData, error: stopsErr } = await supabase.from("gtfs_stops").select("*");
+  if (stopsErr) throw stopsErr;
+
+  // Use a join to get route info simultaneously
+  const { data: stopRoutesData, error: routesErr } = await supabase
+    .from("gtfs_stop_routes")
+    .select("*, gtfs_routes(*)");
+  if (routesErr) throw routesErr;
+
+  const index: StopTripsIndex = {};
+
+  // Initialize stops
+  for (const s of stopsData) {
+    index[s.stop_id] = {
+      stopName: s.stop_name,
+      lat: Number(s.lat),
+      lng: Number(s.lng),
+      routes: {},
+    };
+  }
+
+  // Populate routes
+  for (const sr of stopRoutesData) {
+    const stop = index[sr.stop_id];
+    if (!stop) continue;
+
+    const routeId = sr.route_id;
+    const routeInfo = sr.gtfs_routes;
+
+    if (!stop.routes[routeId]) {
+      stop.routes[routeId] = {
+        routeName: routeInfo.route_name,
+        routeType: routeInfo.route_type,
+        directions: [],
+        dir0WeekdayMin: 0,
+        dir0WeekendMax: 0,
+        dir1WeekdayMin: 0,
+        dir1WeekendMax: 0,
+      };
+    }
+
+    const r = stop.routes[routeId];
+    if (!r.directions.includes(sr.direction_id)) {
+      r.directions.push(sr.direction_id);
+      r.directions.sort();
+    }
+
+    if (sr.direction_id === 0) {
+      r.dir0WeekdayMin = sr.weekday_trips_min;
+      r.dir0WeekendMax = sr.weekend_trips_max;
+    } else if (sr.direction_id === 1) {
+      r.dir1WeekdayMin = sr.weekday_trips_min;
+      r.dir1WeekendMax = sr.weekend_trips_max;
     }
   }
 
-  return gtfsIndex;
+  return index;
 }
 
 type TransitPayload = {
@@ -117,9 +164,10 @@ export async function POST(req: NextRequest) {
 
   let index: StopTripsIndex;
   try {
-    index = getGtfsIndex();
+    index = await fetchGtfsIndexFromDb();
   } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+    console.error(error);
+    return NextResponse.json({ error: "Failed to load GTFS base data." }, { status: 500 });
   }
 
   try {
