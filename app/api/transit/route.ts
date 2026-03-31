@@ -5,8 +5,6 @@ import type {
   ScoredStation,
   StopTripsIndex,
   TransitApiResponse,
-  StopData,
-  StopRouteData,
 } from "@/lib/transit-types";
 
 const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";

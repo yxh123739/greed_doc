@@ -11,13 +11,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl || "", supabaseAnonKey || "");
 
-export const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
 export function createAdminClient() {
-  if (!supabaseUrl || !supabaseServiceKey) {
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) {
     throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
   }
-  return createClient(supabaseUrl, supabaseServiceKey, {
+  return createClient(supabaseUrl, serviceKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false

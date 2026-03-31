@@ -3,8 +3,6 @@ import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import unzipper from "unzipper";
 import readline from "node:readline";
-import pLimit from "p-limit";
-import dotenv from "dotenv";
 import { createAdminClient } from "../lib/supabase/client";
 import {
   parseCalendar,
@@ -15,8 +13,7 @@ import {
   mergeNSPlatforms,
   streamStopTimesLines
 } from "./preprocess-gtfs";
-
-dotenv.config({ path: ".env.local" });
+import type { StopTripsIndex, StopData, StopRouteData } from "@/lib/transit-types";
 
 const S3_URL = "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip";
 const TEMP_DIR = path.resolve(process.cwd(), ".gtfs-temp");
@@ -42,24 +39,26 @@ async function downloadAndExtract() {
   });
 }
 
-async function syncToSupabase(mergedIndex: any) {
+async function syncToSupabase(mergedIndex: StopTripsIndex) {
   const supabase = createAdminClient();
   console.log("Cleaning old data...");
 
-  // Delete from stops cascades to stop_routes. Then delete routes.
+  // Supabase JS SDK disallows unconditional DELETE, so we use a
+  // never-matching .neq() filter as a workaround to delete all rows.
+  // Cascade from gtfs_stops handles gtfs_stop_routes automatically.
   await supabase.from("gtfs_stops").delete().neq("stop_id", "TRUNCATE_HACK");
   await supabase.from("gtfs_routes").delete().neq("route_id", "TRUNCATE_HACK");
 
   console.log("Preparing DB rows...");
-  const stopsRows: any[] = [];
-  const stopRoutesRows: any[] = [];
-  const routesMap = new Map();
+  const stopsRows: { stop_id: string; stop_name: string; lat: number; lng: number }[] = [];
+  const stopRoutesRows: { stop_id: string; route_id: string; direction_id: number; weekday_trips_min: number; weekend_trips_max: number }[] = [];
+  const routesMap = new Map<string, { route_id: string; route_name: string; route_type: number }>();
 
   for (const [stopId, stopData] of Object.entries(mergedIndex)) {
-    const { stopName, lat, lng, routes } = stopData as any;
+    const { stopName, lat, lng, routes } = stopData;
     stopsRows.push({ stop_id: stopId, stop_name: stopName, lat, lng });
 
-    for (const [routeId, routeData] of Object.entries(routes as Record<string, any>)) {
+    for (const [routeId, routeData] of Object.entries(routes)) {
       routesMap.set(routeId, {
         route_id: routeId,
         route_name: routeData.routeName,
@@ -116,7 +115,7 @@ async function main() {
   const stopTimeTripIds = await streamStopTimesLines(rl, trips);
 
   const rawAgg = aggregateStopTrips(stopTimeTripIds, trips, calendar, routes);
-  const index: any = {};
+  const index: StopTripsIndex = {};
   for (const [stopId, data] of Object.entries(rawAgg)) {
     const stopInfo = stops.get(stopId);
     if (stopInfo && stopInfo.locationType !== "1") {
@@ -133,4 +132,7 @@ async function main() {
   console.log("Update complete!");
 }
 
-main().catch(console.error);
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
