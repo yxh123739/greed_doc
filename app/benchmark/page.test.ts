@@ -89,11 +89,13 @@ describe("BenchmarkPage summary layout", () => {
         name: "LTc5 Electric Vehicles",
       })
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", {
-        name: "Your project qualifies for at least 6 L&T points.",
-      })
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", {
+          name: "Your project qualifies for at least 6 L&T points.",
+        })
+      ).toBeInTheDocument();
+    });
     expect(
       screen.getByRole("heading", {
         name: "Grab Your LEED Docs Now!",
