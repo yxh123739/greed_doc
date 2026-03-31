@@ -107,8 +107,8 @@ describe("mergeNSPlatforms", () => {
             directions: [1],
             dir0WeekdayMin: 0,
             dir0WeekendMax: 0,
-            dir1WeekdayMin: 229,
-            dir1WeekendMax: 184,
+            dir1WeekdayMin: 231,
+            dir1WeekendMax: 186,
           },
         },
       },
@@ -122,7 +122,9 @@ describe("mergeNSPlatforms", () => {
     expect(merged["120"].lng).toBe(-73.9722);
     expect(merged["120"].routes["1"].directions).toEqual([0, 1]);
     expect(merged["120"].routes["1"].dir0WeekdayMin).toBe(231);
-    expect(merged["120"].routes["1"].dir1WeekdayMin).toBe(229);
+    expect(merged["120"].routes["1"].dir1WeekdayMin).toBe(231);
+    expect(merged["120"].routes["1"].dir0WeekendMax).toBe(186);
+    expect(merged["120"].routes["1"].dir1WeekendMax).toBe(186);
   });
 
   it("handles unpaired N-only station and keeps single direction", () => {

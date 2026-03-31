@@ -1,65 +1,96 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   APIProvider,
-  Map,
   AdvancedMarker,
   Circle,
+  InfoWindow,
+  Map,
   useMap,
   useMapsLibrary,
-  InfoWindow,
 } from "@vis.gl/react-google-maps";
-import { Bus, TrainFront, MapPin, Loader2, ChevronDown } from "lucide-react";
+import { ChevronDown, Loader2, MapPin, TrainFront } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
-import {
-  QUARTER_MILE_METERS,
-  HALF_MILE_METERS,
-} from "@/lib/google-maps";
-import {
-  type TransitStation,
-  type TransitApiResponse,
-  type RouteTrips,
-} from "@/lib/transit-types";
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+import { HALF_MILE_METERS } from "@/lib/google-maps";
+import type { TransitApiResponse, TransitStation } from "@/lib/transit-types";
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 const DEFAULT_ZOOM = 15;
+const WALKING_ROUTE_COLORS = ["#4285f4", "#34a853", "#ea4335", "#fbbc04", "#9c27b0"];
 
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-
-/** Legend overlay (top-right of the map) */
 function MapLegend() {
   return (
     <div className="absolute right-3 top-3 z-10 rounded-2xl bg-white px-4 py-3 shadow-md">
       <div className="flex items-center gap-2 text-xs font-bold">
-        <span className="inline-block h-0.5 w-8 bg-primary" />
-        0.25 mi (Bus)
-      </div>
-      <div className="mt-1.5 flex items-center gap-2 text-xs font-bold">
-        <span className="inline-block h-0.5 w-8 border-t-2 border-dashed border-primary" />
-        0.5 mi (Subway)
+        <span className="inline-block h-0.5 w-8 border-t-2 border-dashed border-[#7cb342]" />
+        0.5 mi reference
       </div>
       <div className="mt-2 flex items-center gap-2 text-xs">
-        <span className="inline-block h-3 w-3 rounded-full bg-orange-500" />
-        Bus
+        <span className="inline-block h-3 w-3 rounded-full bg-purple-600" />
+        Qualifying Subway Station
       </div>
       <div className="mt-1 flex items-center gap-2 text-xs">
-        <span className="inline-block h-3 w-3 rounded-full bg-purple-600" />
-        Subway
+        <span className="inline-block h-0.5 w-8 bg-[#4285f4]" />
+        Walking Route
       </div>
     </div>
   );
 }
 
-/** Distance label rendered at the midpoint between project and station */
+function WalkingRoute({
+  origin,
+  destination,
+  color,
+}: {
+  origin: { lat: number; lng: number };
+  destination: { lat: number; lng: number };
+  color: string;
+}) {
+  const map = useMap();
+  const routesLib = useMapsLibrary("routes");
+  const rendererRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (!map || !routesLib) return;
+
+    const service = new routesLib.DirectionsService();
+    const renderer = new routesLib.DirectionsRenderer({
+      map,
+      suppressMarkers: true,
+      polylineOptions: {
+        strokeColor: color,
+        strokeWeight: 4,
+        strokeOpacity: 0.8,
+      },
+    });
+
+    rendererRef.current = renderer;
+
+    service.route(
+      {
+        origin,
+        destination,
+        travelMode: "WALKING",
+      },
+      (result: any, status: string) => {
+        if (status === "OK" && result) {
+          renderer.setDirections(result);
+        }
+      }
+    );
+
+    return () => {
+      renderer.setMap(null);
+      rendererRef.current = null;
+    };
+  }, [color, destination, map, origin, routesLib]);
+
+  return null;
+}
+
 function DistanceLabel({
   from,
   to,
@@ -79,37 +110,30 @@ function DistanceLabel({
 
   return (
     <AdvancedMarker position={midpoint} clickable={false}>
-      <div className="rounded bg-white px-1.5 py-0.5 text-xs font-bold text-[#4285f4] shadow-sm whitespace-nowrap">
+      <div className="whitespace-nowrap rounded bg-white px-1.5 py-0.5 text-xs font-bold text-[#4285f4] shadow-sm">
         {distanceMi.toFixed(2)} mi
       </div>
     </AdvancedMarker>
   );
 }
 
-/** Station marker with click-to-show info */
 function StationMarker({ station }: { station: TransitStation }) {
   const [open, setOpen] = useState(false);
-  const isSubway = station.stationType === "subway";
-  const Icon = isSubway ? TrainFront : Bus;
-  const bgColor = isSubway ? "bg-purple-600" : "bg-orange-500";
 
   return (
     <>
       <AdvancedMarker
         position={station.location}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen((value) => !value)}
         title={station.name}
       >
-        <div className={`flex h-7 w-7 items-center justify-center rounded-full ${bgColor} shadow-md`}>
-          <Icon className="h-4 w-4 text-white" />
+        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-purple-600 shadow-md">
+          <TrainFront className="h-4 w-4 text-white" />
         </div>
       </AdvancedMarker>
 
       {open && (
-        <InfoWindow
-          position={station.location}
-          onCloseClick={() => setOpen(false)}
-        >
+        <InfoWindow position={station.location} onCloseClick={() => setOpen(false)}>
           <div className="max-w-[240px] space-y-1 p-1">
             <p className="text-sm font-bold">{station.name}</p>
             <p className="text-xs text-muted-foreground">
@@ -117,18 +141,22 @@ function StationMarker({ station }: { station: TransitStation }) {
             </p>
             {station.routes.length > 0 && (
               <div className="space-y-1 pt-1">
-                {station.routes.map((r) => (
+                {station.routes.map((route) => (
                   <div
-                    key={r.routeId}
-                    className={`flex items-center justify-between gap-2 text-[10px] ${r.counted ? "" : "opacity-50"}`}
+                    key={route.routeId}
+                    className={`flex items-center justify-between gap-2 text-[10px] ${
+                      route.counted ? "" : "opacity-50"
+                    }`}
                   >
                     <span
-                      className={`inline-block rounded px-1.5 py-0.5 font-bold text-white ${r.counted ? "bg-blue-600" : "bg-gray-400 line-through"}`}
+                      className={`inline-block rounded px-1.5 py-0.5 font-bold text-white ${
+                        route.counted ? "bg-blue-600" : "bg-gray-400 line-through"
+                      }`}
                     >
-                      {r.routeName}
+                      {route.routeName}
                     </span>
-                    <span className="text-muted-foreground whitespace-nowrap">
-                      {r.weekdayTrips}wd / {r.weekendTrips}we
+                    <span className="whitespace-nowrap text-muted-foreground">
+                      {route.weekdayTrips}wd / {route.weekendTrips}we
                     </span>
                   </div>
                 ))}
@@ -141,11 +169,9 @@ function StationMarker({ station }: { station: TransitStation }) {
   );
 }
 
-/** Route badges shown near each station on the map */
 function StationRouteBadges({ station }: { station: TransitStation }) {
   if (station.routes.length === 0) return null;
 
-  // Offset slightly below the station marker
   const badgePos = {
     lat: station.location.lat - 0.0003,
     lng: station.location.lng,
@@ -154,12 +180,14 @@ function StationRouteBadges({ station }: { station: TransitStation }) {
   return (
     <AdvancedMarker position={badgePos} clickable={false}>
       <div className="flex gap-0.5">
-        {station.routes.slice(0, 4).map((r) => (
+        {station.routes.slice(0, 4).map((route) => (
           <span
-            key={r.routeId}
-            className={`inline-block rounded px-1 py-0.5 text-[9px] font-bold leading-none shadow ${r.counted ? "bg-blue-600 text-white" : "bg-gray-300 text-gray-500 line-through"}`}
+            key={route.routeId}
+            className={`inline-block rounded px-1 py-0.5 text-[9px] font-bold leading-none shadow ${
+              route.counted ? "bg-blue-600 text-white" : "bg-gray-300 text-gray-500 line-through"
+            }`}
           >
-            {r.routeName}
+            {route.routeName}
           </span>
         ))}
       </div>
@@ -167,7 +195,6 @@ function StationRouteBadges({ station }: { station: TransitStation }) {
   );
 }
 
-/** Auto-fit map bounds to show all markers */
 function MapBoundsFitter({
   center,
   stations,
@@ -180,30 +207,28 @@ function MapBoundsFitter({
 
   useEffect(() => {
     if (!map || !coreLib) return;
+
     if (stations.length === 0) {
       map.setCenter(center);
       map.setZoom(DEFAULT_ZOOM);
       return;
     }
+
     const bounds = new coreLib.LatLngBounds();
     bounds.extend(center);
-    stations.forEach((s) => bounds.extend(s.location));
+    stations.forEach((station) => bounds.extend(station.location));
     map.fitBounds(bounds, { top: 60, right: 60, bottom: 60, left: 60 });
-  }, [map, coreLib, center, stations]);
+  }, [center, coreLib, map, stations]);
 
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Transit Map (main map component)
-// ---------------------------------------------------------------------------
-
 function TransitMap({
   center,
-  stations,
+  qualifyingStations,
 }: {
   center: { lat: number; lng: number };
-  stations: TransitStation[];
+  qualifyingStations: TransitStation[];
 }) {
   return (
     <div className="relative w-full overflow-hidden rounded-xl border border-[#DEE2E6] shadow-sm">
@@ -216,9 +241,8 @@ function TransitMap({
           disableDefaultUI={false}
           className="h-full w-full"
         >
-          <MapBoundsFitter center={center} stations={stations} />
+          <MapBoundsFitter center={center} stations={qualifyingStations} />
 
-          {/* 0.5 mi circle (dashed appearance via lower opacity) */}
           <Circle
             center={center}
             radius={HALF_MILE_METERS}
@@ -229,41 +253,34 @@ function TransitMap({
             fillOpacity={0.03}
           />
 
-          {/* 0.25 mi circle (solid) */}
-          <Circle
-            center={center}
-            radius={QUARTER_MILE_METERS}
-            strokeColor="#7cb342"
-            strokeWeight={2}
-            strokeOpacity={0.9}
-            fillColor="#7cb342"
-            fillOpacity={0.07}
-          />
-
-          {/* Project marker */}
           <AdvancedMarker position={center} title="Project Location">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 shadow-lg ring-2 ring-white">
               <MapPin className="h-5 w-5 text-white" />
             </div>
           </AdvancedMarker>
 
-          {/* Station markers + distance labels + route badges */}
-          {stations.map((station) => (
-            <StationMarker key={station.placeId} station={station} />
+          {qualifyingStations.map((station, index) => (
+            <WalkingRoute
+              key={`walk-${station.stopId}`}
+              origin={center}
+              destination={station.location}
+              color={WALKING_ROUTE_COLORS[index % WALKING_ROUTE_COLORS.length]}
+            />
           ))}
-          {stations.map((station) => (
+
+          {qualifyingStations.map((station) => (
+            <StationMarker key={station.stopId} station={station} />
+          ))}
+          {qualifyingStations.map((station) => (
             <DistanceLabel
-              key={`dist-${station.placeId}`}
+              key={`dist-${station.stopId}`}
               from={center}
               to={station.location}
               distanceMi={station.walkingDistanceMi}
             />
           ))}
-          {stations.map((station) => (
-            <StationRouteBadges
-              key={`routes-${station.placeId}`}
-              station={station}
-            />
+          {qualifyingStations.map((station) => (
+            <StationRouteBadges key={`routes-${station.stopId}`} station={station} />
           ))}
         </Map>
       </div>
@@ -272,30 +289,16 @@ function TransitMap({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Results panel
-// ---------------------------------------------------------------------------
-
-function ResultsPanel({
-  data,
-}: {
-  data: TransitApiResponse;
-}) {
-  const { stations, totalWeekdayTrips, totalWeekendTrips, transitScore } = data;
-  const busCount = stations.filter((s) => s.stationType === "bus").length;
-  const subwayCount = stations.filter((s) => s.stationType === "subway").length;
+function ResultsPanel({ data }: { data: TransitApiResponse }) {
+  const { qualifyingStations, totalWeekdayTrips, totalWeekendTrips, transitScore } = data;
 
   return (
     <section className="overflow-hidden rounded-[18px] border border-[#DEE2E6] bg-white px-6 py-6 text-center shadow-sm">
       <p className="text-lg text-foreground">
-        <span className="font-bold">{busCount}</span>{" "}
-        <span>bus stations (within 0.25 mi)</span>,{" "}
-        <span className="font-bold">{subwayCount}</span>{" "}
-        <span>subway stations (within 0.5 mi)</span>
+        <span className="font-bold">{qualifyingStations.length}</span> qualifying subway
+        station{qualifyingStations.length !== 1 ? "s" : ""} (within 0.5 mi walking)
       </p>
-      <p className="mt-3 text-5xl font-bold text-primary">
-        {stations.length} Transit Stops
-      </p>
+      <p className="mt-3 text-5xl font-bold text-primary">{transitScore} / 4 Points</p>
       <div className="mt-4 flex items-center justify-center gap-6 text-sm text-muted-foreground">
         <span>
           <span className="font-semibold text-foreground">{totalWeekdayTrips}</span> weekday trips
@@ -303,97 +306,98 @@ function ResultsPanel({
         <span>
           <span className="font-semibold text-foreground">{totalWeekendTrips}</span> weekend trips
         </span>
-        <span>
-          <span className="font-semibold text-foreground">{transitScore}</span> LEED points
-        </span>
       </div>
       <p className="mt-2 text-lg text-muted-foreground">
-        Eligible for LEED V5 BD+C, LTc3 Compact and Connected Development
+        LEED v5 BD+C, LTc3 Access to Transit (Option 2)
       </p>
     </section>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Station list panel
-// ---------------------------------------------------------------------------
+function ScoringBreakdown({ data }: { data: TransitApiResponse }) {
+  const [open, setOpen] = useState(true);
+  const { qualifyingStations } = data;
 
-function StationListPanel({ stations }: { stations: TransitStation[] }) {
-  const [open, setOpen] = useState(false);
+  if (qualifyingStations.length === 0) return null;
 
-  if (stations.length === 0) return null;
+  let runningWeekday = 0;
+  let runningWeekend = 0;
 
   return (
     <section className="overflow-hidden rounded-[18px] border border-[#DEE2E6] bg-white shadow-sm">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen((value) => !value)}
         className="flex w-full items-center justify-between bg-primary/8 px-5 py-4 sm:px-6"
       >
         <h2 className="text-base font-bold uppercase tracking-[0.04em] text-primary sm:text-[1.15rem]">
-          Nearby Transit Stations ({stations.length})
+          Scoring Breakdown ({qualifyingStations.length} station
+          {qualifyingStations.length !== 1 ? "s" : ""})
         </h2>
         <ChevronDown
-          className={`h-5 w-5 text-primary transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          className={`h-5 w-5 text-primary transition-transform duration-200 ${
+            open ? "rotate-180" : ""
+          }`}
         />
       </button>
-      {open && <div className="divide-y divide-[#E9ECEF]">
-        {stations.map((station) => (
-          <div
-            key={station.placeId}
-            className="flex items-start justify-between gap-4 px-5 py-3 sm:px-6"
-          >
-            <div className="min-w-0 space-y-1">
-              <div className="flex items-center gap-2">
-                {station.stationType === "subway" ? (
-                  <TrainFront className="h-4 w-4 shrink-0 text-purple-600" />
-                ) : (
-                  <Bus className="h-4 w-4 shrink-0 text-orange-500" />
-                )}
-                <p className="text-sm font-bold text-foreground">
-                  {station.name}
-                </p>
-              </div>
-              {station.routes.length > 0 && (
-                <div className="space-y-0.5">
-                  {station.routes.map((r) => (
-                    <div
-                      key={r.routeId}
-                      className={`flex items-center gap-2 text-xs ${r.counted ? "" : "opacity-50"}`}
-                    >
-                      <span
-                        className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-bold text-white ${r.counted ? "bg-blue-600" : "bg-gray-400 line-through"}`}
-                      >
-                        {r.routeName}
-                      </span>
-                      <span className="text-muted-foreground">
-                        {r.weekdayTrips} wd / {r.weekendTrips} we
-                      </span>
-                    </div>
-                  ))}
+      {open && (
+        <div className="divide-y divide-[#E9ECEF]">
+          {qualifyingStations.map((station, index) => {
+            const stationWeekday = station.routes
+              .filter((route) => route.counted)
+              .reduce((sum, route) => sum + route.weekdayTrips, 0);
+            const stationWeekend = station.routes
+              .filter((route) => route.counted)
+              .reduce((sum, route) => sum + route.weekendTrips, 0);
+            runningWeekday += stationWeekday;
+            runningWeekend += stationWeekend;
+
+            return (
+              <div key={station.stopId} className="px-5 py-4 sm:px-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-purple-600 text-xs font-bold text-white">
+                      {index + 1}
+                    </span>
+                    <TrainFront className="h-4 w-4 text-purple-600" />
+                    <span className="font-bold text-foreground">{station.name}</span>
+                  </div>
+                  <span className="text-sm font-semibold text-muted-foreground">
+                    {station.walkingDistanceMi.toFixed(2)} mi
+                  </span>
                 </div>
-              )}
-            </div>
-            <span className="shrink-0 pt-0.5 text-sm font-semibold text-muted-foreground">
-              {station.walkingDistanceMi.toFixed(2)} mi
-            </span>
-          </div>
-        ))}
-      </div>}
+                <div className="mt-2 space-y-1 pl-8">
+                  {station.routes
+                    .filter((route) => route.counted)
+                    .map((route) => (
+                      <div key={route.routeId} className="flex items-center gap-2 text-xs">
+                        <span className="inline-block rounded bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                          {route.routeName}
+                        </span>
+                        <span className="text-muted-foreground">
+                          +{route.weekdayTrips} wd / +{route.weekendTrips} we
+                        </span>
+                      </div>
+                    ))}
+                </div>
+                <div className="mt-2 pl-8 text-xs text-muted-foreground">
+                  Running total:{" "}
+                  <span className="font-semibold text-foreground">{runningWeekday}</span> weekday,{" "}
+                  <span className="font-semibold text-foreground">{runningWeekend}</span> weekend
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }
 
-// ---------------------------------------------------------------------------
-// CTA panel
-// ---------------------------------------------------------------------------
-
 function CtaPanel() {
   return (
     <section className="rounded-[18px] bg-primary/5 px-6 py-10 text-center">
-      <h2 className="text-3xl font-bold text-foreground">
-        Grab Your LEED Docs!
-      </h2>
+      <h2 className="text-3xl font-bold text-foreground">Grab Your LEED Docs!</h2>
       <p className="mt-2 text-lg text-muted-foreground">
         Everything you need to claim your eligible LEED points, ready to go.
       </p>
@@ -403,10 +407,6 @@ function CtaPanel() {
     </section>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Page content (reads search params)
-// ---------------------------------------------------------------------------
 
 function TransitPageContent() {
   const searchParams = useSearchParams();
@@ -436,43 +436,39 @@ function TransitPageContent() {
     setError(null);
 
     try {
-      const res = await fetch("/api/transit", {
+      const response = await fetch("/api/transit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ address, city, stateProvince, zipCode, country }),
       });
 
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
         throw new Error(
-          (errBody as { error?: string }).error ?? `Request failed (${res.status})`
+          (errorBody as { error?: string }).error ?? `Request failed (${response.status})`
         );
       }
 
-      const payload: TransitApiResponse = await res.json();
+      const payload: TransitApiResponse = await response.json();
       setData(payload);
-    } catch (err) {
+    } catch (fetchError) {
       setError(
-        err instanceof Error ? err.message : "Failed to load transit data."
+        fetchError instanceof Error ? fetchError.message : "Failed to load transit data."
       );
     } finally {
       setLoading(false);
     }
-  }, [address, city, stateProvince, zipCode, country]);
+  }, [address, city, country, stateProvince, zipCode]);
 
   useEffect(() => {
     fetchTransitData();
   }, [fetchTransitData]);
 
-  // --- Render ---
-
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <span className="ml-3 text-lg text-muted-foreground">
-          Analyzing transit access...
-        </span>
+        <span className="ml-3 text-lg text-muted-foreground">Analyzing transit access...</span>
       </div>
     );
   }
@@ -480,14 +476,8 @@ function TransitPageContent() {
   if (error || !data) {
     return (
       <div className="mx-auto max-w-xl py-20 text-center">
-        <p className="text-lg font-semibold text-destructive">
-          {error ?? "No data available."}
-        </p>
-        <Button
-          variant="outline"
-          className="mt-4"
-          onClick={() => fetchTransitData()}
-        >
+        <p className="text-lg font-semibold text-destructive">{error ?? "No data available."}</p>
+        <Button variant="outline" className="mt-4" onClick={() => fetchTransitData()}>
           Retry
         </Button>
       </div>
@@ -496,42 +486,30 @@ function TransitPageContent() {
 
   return (
     <div className="mx-auto max-w-[1140px] space-y-8 px-4 py-8 sm:px-6">
-      {/* Title */}
       <div className="text-center">
         <h1 className="text-2xl font-bold text-foreground sm:text-3xl">
           LEED v5 Access to Transit Calculator
         </h1>
         <p className="mt-2 text-base text-muted-foreground sm:text-lg">
-          Type in your project address to view eligible LEED v5 credits and
-          download the supporting documentation.
+          Type in your project address to view eligible LEED v5 credits and download the
+          supporting documentation.
         </p>
       </div>
 
-      {/* Address bar */}
       <div className="rounded-lg bg-muted px-5 py-3">
         <p className="text-sm font-medium text-foreground">{fullAddress}</p>
       </div>
 
-      {/* Map */}
       <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
-        <TransitMap center={data.geocodedLocation} stations={data.stations} />
+        <TransitMap center={data.geocodedLocation} qualifyingStations={data.qualifyingStations} />
       </APIProvider>
 
-      {/* Results */}
       <ResultsPanel data={data} />
-
-      {/* Station list */}
-      <StationListPanel stations={data.stations} />
-
-      {/* CTA */}
+      <ScoringBreakdown data={data} />
       <CtaPanel />
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Page (with Suspense for useSearchParams)
-// ---------------------------------------------------------------------------
 
 export default function TransitPage() {
   return (

@@ -13,8 +13,6 @@ import {
   type TransitStation,
 } from "@/lib/transit-types";
 
-const MAX_POINTS = 4;
-
 // --- Threshold scoring ---
 
 export function calculateTransitScore(
@@ -51,7 +49,7 @@ export function computeRouteTrips(
   };
 }
 
-// --- Nearby stop finding ---
+// --- Nearby stop finding (haversine pre-filter) ---
 
 interface NearbyStop {
   stopId: string;
@@ -65,69 +63,35 @@ interface NearbyStop {
 export function findNearbyGtfsStops(
   index: StopTripsIndex,
   center: { lat: number; lng: number },
-  maxMi = 0.5
+  maxMi: number = 0.5
 ): NearbyStop[] {
   const results: NearbyStop[] = [];
 
   for (const [stopId, stop] of Object.entries(index)) {
-    const distanceMi = haversineDistanceMi(center, { lat: stop.lat, lng: stop.lng });
-    if (distanceMi > maxMi) continue;
+    const stopLoc = { lat: stop.lat, lng: stop.lng };
+    const distMi = haversineDistanceMi(center, stopLoc);
+
+    if (distMi > maxMi) continue;
 
     results.push({
       stopId,
       stopName: stop.stopName,
       lat: stop.lat,
       lng: stop.lng,
-      distanceMi: Math.round(distanceMi * 100) / 100,
+      distanceMi: Math.round(distMi * 100) / 100,
       routes: stop.routes,
     });
   }
 
-  return results.sort((a, b) => a.distanceMi - b.distanceMi || a.stopId.localeCompare(b.stopId));
+  return results.sort((a, b) => a.distanceMi - b.distanceMi);
 }
 
 // --- Station-by-station scoring with early termination ---
 
-function buildRouteTripsForStation(
-  stopId: string,
-  stop: StopData,
-  walkingDistanceMi: number,
-  countedSet?: Set<string>
-): {
-  routeTrips: RouteTrips[];
-  dominantRouteType: number | null;
-} {
-  const routeTrips: RouteTrips[] = [];
-  let dominantRouteType: number | null = null;
-
-  for (const [routeId, routeData] of Object.entries(stop.routes)) {
-    const routeTripsData = computeRouteTrips(routeData);
-    if (!routeTripsData) continue;
-    if (walkingDistanceMi > maxDistanceForRouteType(routeData.routeType)) continue;
-
-    routeTrips.push({
-      routeId,
-      routeName: routeData.routeName,
-      routeType: routeData.routeType,
-      weekdayTrips: routeTripsData.weekdayTrips,
-      weekendTrips: routeTripsData.weekendTrips,
-      counted: countedSet ? countedSet.has(`${routeId}::${stopId}`) : false,
-    });
-
-    if (
-      dominantRouteType === null ||
-      maxDistanceForRouteType(routeData.routeType) >
-        maxDistanceForRouteType(dominantRouteType)
-    ) {
-      dominantRouteType = routeData.routeType;
-    }
-  }
-
-  return { routeTrips, dominantRouteType };
-}
+const MAX_POINTS = 4;
 
 export function scoreTransit(stops: ScoredStation[]): TransitScoreResult {
-  const countedRouteIds = new Set<string>();
+  const countedRoutes = new Set<string>();
   const qualifyingRoutes: QualifyingRoute[] = [];
   const qualifyingStopIds: string[] = [];
   let totalWeekdayTrips = 0;
@@ -137,15 +101,17 @@ export function scoreTransit(stops: ScoredStation[]): TransitScoreResult {
     let stationContributed = false;
 
     for (const [routeId, routeData] of Object.entries(stop.routes)) {
-      if (countedRouteIds.has(routeId)) continue;
-      if (walkingDistanceMi > maxDistanceForRouteType(routeData.routeType)) continue;
+      if (countedRoutes.has(routeId)) continue;
 
-      const routeTrips = computeRouteTrips(routeData);
-      if (!routeTrips) continue;
+      const routeMaxDist = maxDistanceForRouteType(routeData.routeType);
+      if (walkingDistanceMi > routeMaxDist) continue;
 
-      countedRouteIds.add(routeId);
-      totalWeekdayTrips += routeTrips.weekdayTrips;
-      totalWeekendTrips += routeTrips.weekendTrips;
+      const trips = computeRouteTrips(routeData);
+      if (!trips) continue;
+
+      countedRoutes.add(routeId);
+      totalWeekdayTrips += trips.weekdayTrips;
+      totalWeekendTrips += trips.weekendTrips;
       stationContributed = true;
 
       qualifyingRoutes.push({
@@ -154,8 +120,8 @@ export function scoreTransit(stops: ScoredStation[]): TransitScoreResult {
         routeType: routeData.routeType,
         stopId,
         stopName: stop.stopName,
-        weekdayTrips: routeTrips.weekdayTrips,
-        weekendTrips: routeTrips.weekendTrips,
+        weekdayTrips: trips.weekdayTrips,
+        weekendTrips: trips.weekendTrips,
       });
     }
 
@@ -163,9 +129,8 @@ export function scoreTransit(stops: ScoredStation[]): TransitScoreResult {
       qualifyingStopIds.push(stopId);
     }
 
-    if (calculateTransitScore(totalWeekdayTrips, totalWeekendTrips).points >= MAX_POINTS) {
-      break;
-    }
+    const { points } = calculateTransitScore(totalWeekdayTrips, totalWeekendTrips);
+    if (points >= MAX_POINTS) break;
   }
 
   const { points, threshold } = calculateTransitScore(totalWeekdayTrips, totalWeekendTrips);
@@ -180,6 +145,8 @@ export function scoreTransit(stops: ScoredStation[]): TransitScoreResult {
   };
 }
 
+// --- Build TransitStation[] for API response ---
+
 export function buildStationList(
   stops: ScoredStation[],
   scoreResult: TransitScoreResult
@@ -187,20 +154,36 @@ export function buildStationList(
   const countedSet = new Set(
     scoreResult.qualifyingRoutes.map((route) => `${route.routeId}::${route.stopId}`)
   );
-  const qualifyingStopIdSet = new Set(scoreResult.qualifyingStopIds);
+  const qualifyingSet = new Set(scoreResult.qualifyingStopIds);
 
-  const allNearbyStations = stops
+  const allNearbyStations: TransitStation[] = stops
     .map(({ stopId, stop, walkingDistanceMi }) => {
-      const { routeTrips, dominantRouteType } = buildRouteTripsForStation(
-        stopId,
-        stop,
-        walkingDistanceMi,
-        countedSet
-      );
+      const routeTrips: RouteTrips[] = [];
 
-      if (routeTrips.length === 0 || dominantRouteType === null) {
-        return null;
+      for (const [routeId, routeData] of Object.entries(stop.routes)) {
+        const trips = computeRouteTrips(routeData);
+        if (!trips) continue;
+
+        routeTrips.push({
+          routeId,
+          routeName: routeData.routeName,
+          routeType: routeData.routeType,
+          weekdayTrips: trips.weekdayTrips,
+          weekendTrips: trips.weekendTrips,
+          counted: countedSet.has(`${routeId}::${stopId}`),
+        });
       }
+
+      const routeEntries = Object.values(stop.routes);
+      const dominantRouteType =
+        routeEntries.length > 0
+          ? routeEntries.reduce((best, route) =>
+              maxDistanceForRouteType(route.routeType) >
+              maxDistanceForRouteType(best.routeType)
+                ? route
+                : best
+            ).routeType
+          : 1;
 
       return {
         stopId,
@@ -211,45 +194,11 @@ export function buildStationList(
         routes: routeTrips,
       };
     })
-    .filter((station): station is TransitStation => station !== null);
+    .filter((station) => station.routes.length > 0);
 
   const qualifyingStations = allNearbyStations.filter((station) =>
-    qualifyingStopIdSet.has(station.stopId)
+    qualifyingSet.has(station.stopId)
   );
 
   return { qualifyingStations, allNearbyStations };
-}
-
-// --- Compatibility helpers ---
-
-export function deduplicateRoutes(candidates: QualifyingRoute[]): QualifyingRoute[] {
-  const bestByRoute = new Map<string, QualifyingRoute>();
-
-  for (const candidate of candidates) {
-    const existing = bestByRoute.get(candidate.routeId);
-    if (!existing || candidate.weekdayTrips > existing.weekdayTrips) {
-      bestByRoute.set(candidate.routeId, candidate);
-    }
-  }
-
-  return Array.from(bestByRoute.values());
-}
-
-export function buildStationResponse(
-  index: StopTripsIndex,
-  center: { lat: number; lng: number },
-  scoreResult: TransitScoreResult
-): TransitStation[] {
-  const nearbyStops = findNearbyGtfsStops(index, center).map((stop) => ({
-    stopId: stop.stopId,
-    stop: {
-      stopName: stop.stopName,
-      lat: stop.lat,
-      lng: stop.lng,
-      routes: stop.routes,
-    },
-    walkingDistanceMi: stop.distanceMi,
-  }));
-
-  return buildStationList(nearbyStops, scoreResult).allNearbyStations;
 }
