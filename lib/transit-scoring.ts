@@ -96,11 +96,15 @@ export function scoreTransit(stops: ScoredStation[]): TransitScoreResult {
   const qualifyingStopIds: string[] = [];
   let totalWeekdayTrips = 0;
   let totalWeekendTrips = 0;
+  let reachedMaxPoints = false;
 
   for (const { stopId, stop, walkingDistanceMi } of stops) {
+    if (reachedMaxPoints) break;
+
     let stationContributed = false;
 
     for (const [routeId, routeData] of Object.entries(stop.routes)) {
+      if (reachedMaxPoints) break;
       if (countedRoutes.has(routeId)) continue;
 
       const routeMaxDist = maxDistanceForRouteType(routeData.routeType);
@@ -123,14 +127,16 @@ export function scoreTransit(stops: ScoredStation[]): TransitScoreResult {
         weekdayTrips: trips.weekdayTrips,
         weekendTrips: trips.weekendTrips,
       });
+
+      if (calculateTransitScore(totalWeekdayTrips, totalWeekendTrips).points >= MAX_POINTS) {
+        reachedMaxPoints = true;
+        break;
+      }
     }
 
     if (stationContributed) {
       qualifyingStopIds.push(stopId);
     }
-
-    const { points } = calculateTransitScore(totalWeekdayTrips, totalWeekendTrips);
-    if (points >= MAX_POINTS) break;
   }
 
   const { points, threshold } = calculateTransitScore(totalWeekdayTrips, totalWeekendTrips);

@@ -1,16 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildStationList,
   calculateTransitScore,
   computeRouteTrips,
   findNearbyGtfsStops,
   scoreTransit,
 } from "@/lib/transit-scoring";
-import type { ScoredStation, StopData } from "@/lib/transit-types";
+import type { ScoredStation, StopData, TransitScoreResult } from "@/lib/transit-types";
 
 function makeStation(
   routeConfigs: {
     routeId: string;
     routeName: string;
+    routeType?: number;
+    directions?: number[];
     dir0WeekdayMin: number;
     dir0WeekendMax: number;
     dir1WeekdayMin: number;
@@ -22,8 +25,8 @@ function makeStation(
   for (const routeConfig of routeConfigs) {
     routes[routeConfig.routeId] = {
       routeName: routeConfig.routeName,
-      routeType: 1,
-      directions: [0, 1],
+      routeType: routeConfig.routeType ?? 1,
+      directions: routeConfig.directions ?? [0, 1],
       dir0WeekdayMin: routeConfig.dir0WeekdayMin,
       dir0WeekendMax: routeConfig.dir0WeekendMax,
       dir1WeekdayMin: routeConfig.dir1WeekdayMin,
@@ -218,6 +221,14 @@ describe("scoreTransit (station-by-station accumulation)", () => {
             dir1WeekdayMin: 200,
             dir1WeekendMax: 120,
           },
+          {
+            routeId: "C",
+            routeName: "C",
+            dir0WeekdayMin: 200,
+            dir0WeekendMax: 120,
+            dir1WeekdayMin: 200,
+            dir1WeekendMax: 120,
+          },
         ]),
       },
       {
@@ -225,8 +236,8 @@ describe("scoreTransit (station-by-station accumulation)", () => {
         walkingDistanceMi: 0.3,
         stop: makeStation([
           {
-            routeId: "C",
-            routeName: "C",
+            routeId: "D",
+            routeName: "D",
             dir0WeekdayMin: 100,
             dir0WeekendMax: 80,
             dir1WeekdayMin: 100,
@@ -238,8 +249,37 @@ describe("scoreTransit (station-by-station accumulation)", () => {
 
     const result = scoreTransit(stops);
     expect(result.points).toBe(4);
+    expect(result.totalWeekdayTrips).toBe(400);
+    expect(result.totalWeekendTrips).toBe(240);
     expect(result.qualifyingStopIds).toEqual(["X"]);
     expect(result.qualifyingRoutes.find((route) => route.routeId === "C")).toBeUndefined();
+    expect(result.qualifyingRoutes.find((route) => route.routeId === "D")).toBeUndefined();
+  });
+
+  it("skips route_type 3 stops beyond 0.25 mi", () => {
+    const stops: ScoredStation[] = [
+      {
+        stopId: "B1",
+        walkingDistanceMi: 0.3,
+        stop: makeStation([
+          {
+            routeId: "M5",
+            routeName: "M5",
+            routeType: 3,
+            dir0WeekdayMin: 60,
+            dir0WeekendMax: 40,
+            dir1WeekdayMin: 60,
+            dir1WeekendMax: 40,
+          },
+        ]),
+      },
+    ];
+
+    const result = scoreTransit(stops);
+    expect(result.totalWeekdayTrips).toBe(0);
+    expect(result.totalWeekendTrips).toBe(0);
+    expect(result.qualifyingRoutes).toHaveLength(0);
+    expect(result.qualifyingStopIds).toEqual([]);
   });
 
   it("skips single-direction routes (no paired service)", () => {
@@ -357,5 +397,78 @@ describe("findNearbyGtfsStops", () => {
     const center = { lat: 40.768, lng: -73.982 };
     const result = findNearbyGtfsStops(index, center);
     expect(result).toHaveLength(0);
+  });
+});
+
+describe("buildStationList", () => {
+  it("returns qualifyingStations and allNearbyStations with counted routes only for paired-service stops", () => {
+    const stops: ScoredStation[] = [
+      {
+        stopId: "A",
+        walkingDistanceMi: 0.1,
+        stop: makeStation([
+          {
+            routeId: "1",
+            routeName: "1",
+            dir0WeekdayMin: 50,
+            dir0WeekendMax: 20,
+            dir1WeekdayMin: 50,
+            dir1WeekendMax: 20,
+          },
+          {
+            routeId: "2",
+            routeName: "2",
+            dir0WeekdayMin: 30,
+            dir0WeekendMax: 10,
+            dir1WeekdayMin: 30,
+            dir1WeekendMax: 10,
+          },
+        ]),
+      },
+      {
+        stopId: "B",
+        walkingDistanceMi: 0.2,
+        stop: makeStation([
+          {
+            routeId: "X",
+            routeName: "X",
+            routeType: 1,
+            directions: [0],
+            dir0WeekdayMin: 40,
+            dir0WeekendMax: 20,
+            dir1WeekdayMin: 0,
+            dir1WeekendMax: 0,
+          },
+        ]),
+      },
+    ];
+
+    const scoreResult: TransitScoreResult = {
+      qualifyingRoutes: [
+        {
+          routeId: "1",
+          routeName: "1",
+          routeType: 1,
+          stopId: "A",
+          stopName: "Test Station",
+          weekdayTrips: 50,
+          weekendTrips: 20,
+        },
+      ],
+      qualifyingStopIds: ["A"],
+      totalWeekdayTrips: 50,
+      totalWeekendTrips: 20,
+      points: 1,
+      threshold: { weekday: 72, weekend: 30 },
+    };
+
+    const result = buildStationList(stops, scoreResult);
+    expect(result.allNearbyStations).toHaveLength(1);
+    expect(result.qualifyingStations).toHaveLength(1);
+    expect(result.allNearbyStations[0].stopId).toBe("A");
+    expect(result.allNearbyStations[0].stationType).toBe("subway");
+    expect(result.allNearbyStations[0].routes).toHaveLength(2);
+    expect(result.allNearbyStations[0].routes.find((route) => route.routeId === "1")?.counted).toBe(true);
+    expect(result.allNearbyStations[0].routes.find((route) => route.routeId === "2")?.counted).toBe(false);
   });
 });
