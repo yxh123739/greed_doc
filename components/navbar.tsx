@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 
 import { Leaf } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -25,6 +26,7 @@ import { ContactUsDialog } from "@/components/contact-us-dialog";
 
 export function Navbar() {
   const [email, setEmail] = useState<string | null>(null);
+  const pathname = usePathname();
 
   useEffect(() => {
     let mounted = true;
@@ -60,25 +62,22 @@ export function Navbar() {
 
           {/* Navigation Menu */}
           <NavigationMenu className="hidden md:flex">
-            <NavigationMenuList className="hidden">
+            <NavigationMenuList>
               <NavigationMenuItem>
-                <Link href="#" legacyBehavior passHref>
-                  <NavigationMenuLink className="font-medium text-foreground hover:text-primary transition-colors">
-                    Tools
+                <Link href="/" legacyBehavior passHref>
+                  <NavigationMenuLink className={`font-medium transition-colors ${
+                    pathname === "/" ? "text-primary" : "text-muted-foreground hover:text-primary"
+                  }`}>
+                    LEED v5 Target Finder
                   </NavigationMenuLink>
                 </Link>
               </NavigationMenuItem>
               <NavigationMenuItem>
-                <Link href="#" legacyBehavior passHref>
-                  <NavigationMenuLink className="text-muted-foreground hover:text-primary transition-colors">
-                    Help
-                  </NavigationMenuLink>
-                </Link>
-              </NavigationMenuItem>
-              <NavigationMenuItem>
-                <Link href="#" legacyBehavior passHref>
-                  <NavigationMenuLink className="text-muted-foreground hover:text-primary transition-colors">
-                    Pricing
+                <Link href="/benchmark" legacyBehavior passHref>
+                  <NavigationMenuLink className={`transition-colors ${
+                    pathname === "/benchmark" ? "font-medium text-primary" : "text-muted-foreground hover:text-primary"
+                  }`}>
+                    L&T Benchmark
                   </NavigationMenuLink>
                 </Link>
               </NavigationMenuItem>
