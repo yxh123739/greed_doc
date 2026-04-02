@@ -45,6 +45,8 @@ export async function fetchSchedulePdfs(
       const filename = `mta-schedule-${group}.pdf`;
       const { data, error } = await supabase.storage
         .from("mta-schedules")
+        // Storage path is just `${group}.pdf` (no prefix); `filename` adds the
+        // `mta-schedule-` prefix used as the ZIP entry name returned to callers.
         .download(`${group}.pdf`);
 
       if (error || !data) {
