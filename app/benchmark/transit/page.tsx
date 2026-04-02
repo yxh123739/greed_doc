@@ -394,15 +394,74 @@ function ScoringBreakdown({ data }: { data: TransitApiResponse }) {
   );
 }
 
-function CtaPanel() {
+function CtaPanel({ data }: { data: TransitApiResponse }) {
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const response = await fetch("/api/transit/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          address: searchParams.get("address") ?? "",
+          city: searchParams.get("city") ?? "",
+          stateProvince: searchParams.get("stateProvince") ?? "",
+          zipCode: searchParams.get("zipCode") ?? "",
+          country: searchParams.get("country") ?? "",
+          geocodedLocation: data.geocodedLocation,
+          qualifyingStations: data.qualifyingStations,
+          totalWeekdayTrips: data.totalWeekdayTrips,
+          totalWeekendTrips: data.totalWeekendTrips,
+          transitScore: data.transitScore,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(
+          (errorBody as { error?: string }).error ?? `Download failed (${response.status})`
+        );
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "LEED-Transit-Report.zip";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      const { toast } = await import("sonner");
+      toast(error instanceof Error ? error.message : "Download failed");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <section className="rounded-[18px] bg-primary/5 px-6 py-10 text-center">
       <h2 className="text-3xl font-bold text-foreground">Grab Your LEED Docs!</h2>
       <p className="mt-2 text-lg text-muted-foreground">
         Everything you need to claim your eligible LEED points, ready to go.
       </p>
-      <Button size="lg" className="mt-6 rounded-lg px-10 text-xl font-bold">
-        Download
+      <Button
+        size="lg"
+        className="mt-6 rounded-lg px-10 text-xl font-bold"
+        onClick={handleDownload}
+        disabled={downloading}
+      >
+        {downloading ? (
+          <>
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            Generating report...
+          </>
+        ) : (
+          "Download"
+        )}
       </Button>
     </section>
   );
@@ -506,7 +565,7 @@ function TransitPageContent() {
 
       <ResultsPanel data={data} />
       <ScoringBreakdown data={data} />
-      <CtaPanel />
+      <CtaPanel data={data} />
     </div>
   );
 }
