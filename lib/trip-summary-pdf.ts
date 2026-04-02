@@ -152,6 +152,13 @@ function drawRoutesTable(
       });
 
       doc.y = rowY + 16;
+
+      // Page overflow detection
+      const PAGE_HEIGHT = doc.page.height;
+      const BOTTOM_MARGIN = doc.page.margins.bottom;
+      if (doc.y > PAGE_HEIGHT - BOTTOM_MARGIN - 80) {
+        doc.addPage();
+      }
     }
   }
 
