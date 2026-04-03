@@ -1,18 +1,19 @@
 /**
- * Maps individual MTA subway route names to the PDF schedule group filename.
- * MTA publishes combined schedules per route group.
+ * Maps individual MTA subway route names to the PDF schedule filename in Supabase Storage.
+ * Each route maps to its own per-route PDF, except J and Z which share a combined timetable.
+ * S shuttle routes use their GTFS route_id: FS (Franklin Av), GS (42 St), H (Rockaway Park).
  */
 export const ROUTE_TO_SCHEDULE: Record<string, string> = {
-  "1": "1-2-3", "2": "1-2-3", "3": "1-2-3",
-  "4": "4-5-6", "5": "4-5-6", "6": "4-5-6",
+  "1": "1", "2": "2", "3": "3",
+  "4": "4", "5": "5", "6": "6",
   "7": "7",
-  "A": "A-C-E", "C": "A-C-E", "E": "A-C-E",
-  "B": "B-D-F-M", "D": "B-D-F-M", "F": "B-D-F-M", "M": "B-D-F-M",
+  "A": "A", "C": "C", "E": "E",
+  "B": "B", "D": "D", "F": "F", "M": "M",
   "G": "G",
   "J": "J-Z", "Z": "J-Z",
   "L": "L",
-  "N": "N-Q-R-W", "Q": "N-Q-R-W", "R": "N-Q-R-W", "W": "N-Q-R-W",
-  "S": "S",
+  "N": "N", "Q": "Q", "R": "R", "W": "W",
+  "FS": "FS", "GS": "GS", "H": "H",
   "SIR": "SIR",
 };
 

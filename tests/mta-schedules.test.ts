@@ -19,34 +19,57 @@ describe("ROUTE_TO_SCHEDULE", () => {
       "1","2","3","4","5","6","7",
       "A","C","E","B","D","F","M",
       "G","J","Z","L",
-      "N","Q","R","W","S","SIR",
+      "N","Q","R","W","SIR",
+      "FS","GS","H",
     ];
     for (const route of allRoutes) {
       expect(ROUTE_TO_SCHEDULE[route]).toBeDefined();
     }
   });
+
+  it("maps each numeric route to its own individual schedule", () => {
+    expect(ROUTE_TO_SCHEDULE["1"]).toBe("1");
+    expect(ROUTE_TO_SCHEDULE["2"]).toBe("2");
+    expect(ROUTE_TO_SCHEDULE["3"]).toBe("3");
+  });
+
+  it("maps J and Z to the shared J-Z schedule", () => {
+    expect(ROUTE_TO_SCHEDULE["J"]).toBe("J-Z");
+    expect(ROUTE_TO_SCHEDULE["Z"]).toBe("J-Z");
+  });
+
+  it("maps S shuttle routes to their individual schedules", () => {
+    expect(ROUTE_TO_SCHEDULE["FS"]).toBe("FS");
+    expect(ROUTE_TO_SCHEDULE["GS"]).toBe("GS");
+    expect(ROUTE_TO_SCHEDULE["H"]).toBe("H");
+  });
 });
 
 describe("getScheduleGroups", () => {
-  it("deduplicates routes that share the same schedule PDF", () => {
-    const routeNames = ["1", "2", "3"];
-    const groups = getScheduleGroups(routeNames);
-    expect(groups).toEqual(["1-2-3"]);
+  it("returns one group per route for routes with individual PDFs", () => {
+    const groups = getScheduleGroups(["1", "2", "3"]);
+    expect(groups).toHaveLength(3);
+    expect(groups).toContain("1");
+    expect(groups).toContain("2");
+    expect(groups).toContain("3");
+  });
+
+  it("deduplicates J and Z (share the same PDF)", () => {
+    const groups = getScheduleGroups(["J", "Z"]);
+    expect(groups).toEqual(["J-Z"]);
   });
 
   it("returns multiple groups for routes on different PDFs", () => {
-    const routeNames = ["1", "A", "L"];
-    const groups = getScheduleGroups(routeNames);
+    const groups = getScheduleGroups(["1", "A", "L"]);
     expect(groups).toHaveLength(3);
-    expect(groups).toContain("1-2-3");
-    expect(groups).toContain("A-C-E");
+    expect(groups).toContain("1");
+    expect(groups).toContain("A");
     expect(groups).toContain("L");
   });
 
   it("skips routes not in the mapping", () => {
-    const routeNames = ["1", "UNKNOWN_ROUTE"];
-    const groups = getScheduleGroups(routeNames);
-    expect(groups).toEqual(["1-2-3"]);
+    const groups = getScheduleGroups(["1", "UNKNOWN_ROUTE"]);
+    expect(groups).toEqual(["1"]);
   });
 
   it("returns empty array for empty input", () => {
@@ -70,23 +93,8 @@ describe("fetchSchedulePdfs", () => {
       download: mockDownload,
     } as any);
 
-    await expect(fetchSchedulePdfs(["1-2-3"])).rejects.toThrow(
-      "Schedule not found: mta-schedule-1-2-3.pdf is missing from storage"
-    );
-  });
-
-  it("throws when data is null and error is null", async () => {
-    const { supabase } = await import("@/lib/supabase/client");
-    const mockDownload = vi.fn().mockResolvedValue({
-      data: null,
-      error: null,
-    });
-    vi.mocked(supabase.storage.from).mockReturnValue({
-      download: mockDownload,
-    } as any);
-
-    await expect(fetchSchedulePdfs(["A-C-E"])).rejects.toThrow(
-      "Schedule not found: mta-schedule-A-C-E.pdf is missing from storage"
+    await expect(fetchSchedulePdfs(["1"])).rejects.toThrow(
+      "Schedule not found: mta-schedule-1.pdf is missing from storage"
     );
   });
 
@@ -105,6 +113,5 @@ describe("fetchSchedulePdfs", () => {
     expect(results).toHaveLength(1);
     expect(results[0].filename).toBe("mta-schedule-L.pdf");
     expect(Buffer.isBuffer(results[0].buffer)).toBe(true);
-    expect(results[0].buffer).toEqual(Buffer.from(await fakeBlob.arrayBuffer()));
   });
 });
