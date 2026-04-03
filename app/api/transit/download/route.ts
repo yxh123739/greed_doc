@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
 
   try {
     [mapImage, schedulePdfs, summaryPdf] = await Promise.all([
-      fetchStaticMapImage(geocodedLocation, stationPins, API_KEY),
+      fetchStaticMapImage(geocodedLocation, stationPins, API_KEY, req.nextUrl.origin),
       fetchSchedulePdfs(scheduleGroups),
       generateTripSummaryPdf({
         address: fullAddress,

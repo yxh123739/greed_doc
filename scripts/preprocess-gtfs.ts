@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as readline from "node:readline";
 import type { StopData, StopTripsIndex, StopRouteData } from "@/lib/transit-types";
 
-const GTFS_DIR = path.resolve("public/gtfs_supplemented");
+const GTFS_DIR = path.resolve(process.env.GTFS_DIR ?? "public/gtfs_subway");
 const OUTPUT_DIR = path.resolve(GTFS_DIR, "index");
 const OUTPUT_FILE = path.resolve(OUTPUT_DIR, "stop-trips.json");
 
@@ -33,8 +33,11 @@ export interface DayFlags {
   friday: boolean;
   saturday: boolean;
   sunday: boolean;
+  startDate: string; // YYYYMMDD
+  endDate: string;   // YYYYMMDD
 }
 
+/** Parse GTFS calendar.txt into a map of service_id → DayFlags (including date range). */
 export function parseCalendar(csv: string): Map<string, DayFlags> {
   const map = new Map<string, DayFlags>();
   for (const row of parseCsvLines(csv)) {
@@ -46,9 +49,31 @@ export function parseCalendar(csv: string): Map<string, DayFlags> {
       friday: row.friday === "1",
       saturday: row.saturday === "1",
       sunday: row.sunday === "1",
+      startDate: row.start_date ?? "",
+      endDate: row.end_date ?? "",
     });
   }
   return map;
+}
+
+/**
+ * Filter calendar to only services active on `referenceDate` (YYYYMMDD).
+ * Services missing date range fields are kept (defensive fallback).
+ */
+export function filterActiveServices(
+  calendar: Map<string, DayFlags>,
+  referenceDate: string
+): Map<string, DayFlags> {
+  const active = new Map<string, DayFlags>();
+  for (const [serviceId, flags] of calendar) {
+    if (flags.startDate && flags.endDate) {
+      if (referenceDate < flags.startDate || referenceDate > flags.endDate) {
+        continue; // service not active on reference date
+      }
+    }
+    active.set(serviceId, flags);
+  }
+  return active;
 }
 
 export function parseRoutes(
@@ -307,8 +332,14 @@ async function main() {
   const tripsCsv = fs.readFileSync(path.join(GTFS_DIR, "trips.txt"), "utf-8");
   const stopsCsv = fs.readFileSync(path.join(GTFS_DIR, "stops.txt"), "utf-8");
 
-  const calendar = parseCalendar(calendarCsv);
-  console.log(`  calendar.txt: ${calendar.size} services`);
+  const calendarAll = parseCalendar(calendarCsv);
+  console.log(`  calendar.txt: ${calendarAll.size} services (total)`);
+
+  // Filter to only currently-active services so seasonal / expired schedules
+  // don't inflate trip counts.
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, ""); // YYYYMMDD
+  const calendar = filterActiveServices(calendarAll, today);
+  console.log(`  active services (${today}): ${calendar.size} of ${calendarAll.size}`);
 
   const routes = parseRoutes(routesCsv);
   console.log(`  routes.txt: ${routes.size} routes`);

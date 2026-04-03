@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { ArrowRight, Lock } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -551,6 +552,9 @@ function SummaryTab({
   walkScoreError,
   transitData,
   onFieldChange,
+  onDownload,
+  downloadLoading,
+  downloadError,
 }: {
   formData: BenchmarkFormData;
   walkScoreData: WalkScoreData;
@@ -560,8 +564,13 @@ function SummaryTab({
     totalWeekdayTrips: number;
     totalWeekendTrips: number;
     transitScore: number;
+    qualifyingStations: unknown[];
+    geocodedLocation: { lat: number; lng: number } | null;
   } | null;
   onFieldChange: (field: keyof BenchmarkFormData, value: string | boolean) => void;
+  onDownload: () => Promise<void>;
+  downloadLoading: boolean;
+  downloadError: string | null;
 }) {
   const ltc1Points = getLtc1Points(formData);
   const ltc2Points = getLtc2Points(formData);
@@ -860,10 +869,18 @@ function SummaryTab({
           Everything you need to claim your eligible LEED points, ready to go.
         </p>
         <div className="mt-6">
-          <Button className="h-14 rounded-xl px-10 text-xl font-bold shadow-sm sm:h-16 sm:text-2xl">
+          <Button
+            className="h-14 rounded-xl px-10 text-xl font-bold shadow-sm sm:h-16 sm:text-2xl"
+            onClick={onDownload}
+            loading={downloadLoading}
+            disabled={downloadLoading || !transitData?.geocodedLocation}
+          >
             Download
           </Button>
         </div>
+        {downloadError && (
+          <p className="mt-3 text-sm text-destructive">{downloadError}</p>
+        )}
         <p className="mt-4 text-sm text-muted-foreground">
           Includes supporting documentation for credits marked &quot;Docs Available&quot;
         </p>
@@ -895,7 +912,11 @@ export default function BenchmarkPage() {
     totalWeekdayTrips: number;
     totalWeekendTrips: number;
     transitScore: number;
+    qualifyingStations: unknown[];
+    geocodedLocation: { lat: number; lng: number } | null;
   } | null>(null);
+  const [downloadLoading, setDownloadLoading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const isFormComplete = useMemo(() => {
     return (
@@ -944,6 +965,10 @@ export default function BenchmarkPage() {
   useEffect(() => {
     if (activeTab !== "summary" || !formData.address || !formData.city) return;
 
+    // Clear previous result immediately to avoid showing stale data
+    // from a different address while the new request is in flight.
+    setTransitData(null);
+
     const controller = new AbortController();
     fetch("/api/transit", {
       method: "POST",
@@ -957,17 +982,25 @@ export default function BenchmarkPage() {
       }),
       signal: controller.signal,
     })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data) {
-          setTransitData({
-            totalWeekdayTrips: data.totalWeekdayTrips,
-            totalWeekendTrips: data.totalWeekendTrips,
-            transitScore: data.transitScore,
-          });
-        }
+      .then((res) => {
+        if (!res.ok) throw new Error(`Transit API returned ${res.status}`);
+        return res.json();
       })
-      .catch(() => {});
+      .then((data) => {
+        setTransitData({
+          totalWeekdayTrips: data.totalWeekdayTrips,
+          totalWeekendTrips: data.totalWeekendTrips,
+          transitScore: data.transitScore,
+          qualifyingStations: data.qualifyingStations ?? [],
+          geocodedLocation: data.geocodedLocation ?? null,
+        });
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          console.error("Transit fetch failed:", err);
+          // transitData stays null — UI shows "Loading..." instead of stale data
+        }
+      });
 
     return () => controller.abort();
   }, [activeTab, formData.address, formData.city, formData.stateProvince, formData.zipCode, formData.country]);
@@ -1037,6 +1070,45 @@ export default function BenchmarkPage() {
     }
   };
 
+  const handleDownload = async () => {
+    if (!transitData?.geocodedLocation || !transitData.qualifyingStations) return;
+    setDownloadLoading(true);
+    setDownloadError(null);
+    try {
+      const res = await fetch("/api/transit/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          address: formData.address,
+          city: formData.city,
+          stateProvince: formData.stateProvince,
+          zipCode: formData.zipCode,
+          country: formData.country,
+          geocodedLocation: transitData.geocodedLocation,
+          qualifyingStations: transitData.qualifyingStations,
+          totalWeekdayTrips: transitData.totalWeekdayTrips,
+          totalWeekendTrips: transitData.totalWeekendTrips,
+          transitScore: transitData.transitScore,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? `Download failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "LEED-Transit-Report.zip";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : "Download failed.");
+    } finally {
+      setDownloadLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
@@ -1054,23 +1126,63 @@ export default function BenchmarkPage() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={onTabChange} className="gap-0">
-          <div className="border-b border-[#E9ECEF] px-2">
-            <TabsList
-              variant="line"
-              className="grid h-auto w-full grid-cols-1 rounded-none p-0 sm:grid-cols-2"
-            >
+          <div className="border-b border-[#E9ECEF] bg-white">
+            <TabsList className="mx-auto flex h-auto max-w-[1240px] items-stretch rounded-none bg-transparent p-0">
+              {/* Step 1 */}
               <TabsTrigger
                 value="location"
-                className="h-auto rounded-none border-b-2 border-transparent px-4 py-4 text-base font-bold text-muted-foreground after:hidden data-[state=active]:border-primary data-[state=active]:bg-primary/5 data-[state=active]:text-primary sm:text-lg"
+                className="group relative flex flex-1 items-center gap-3 rounded-none border-b-2 border-transparent px-6 py-4 after:hidden data-[state=active]:border-primary data-[state=active]:bg-primary/5"
               >
-                Project Location
+                <span className={cn(
+                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-colors",
+                  activeTab === "location"
+                    ? "bg-primary text-white"
+                    : "bg-primary/15 text-primary"
+                )}>
+                  1
+                </span>
+                <span className={cn(
+                  "text-sm font-semibold sm:text-base",
+                  activeTab === "location" ? "text-primary" : "text-muted-foreground"
+                )}>
+                  Project Location
+                </span>
               </TabsTrigger>
+
+              {/* Divider arrow */}
+              <div className="flex items-center px-2">
+                <ArrowRight className="h-4 w-4 text-muted-foreground/40" />
+              </div>
+
+              {/* Step 2 */}
               <TabsTrigger
                 value="summary"
-                className="h-auto rounded-none border-b-2 border-transparent px-4 py-4 text-base font-bold text-muted-foreground after:hidden data-[state=active]:border-primary data-[state=active]:bg-primary/5 data-[state=active]:text-primary sm:text-lg"
                 disabled={!isFormComplete}
+                className="group relative flex flex-1 items-center gap-3 rounded-none border-b-2 border-transparent px-6 py-4 after:hidden disabled:cursor-not-allowed disabled:opacity-100 data-[state=active]:border-primary data-[state=active]:bg-primary/5"
               >
-                LEED v5 Location &amp; Transportation Summary
+                <span className={cn(
+                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-colors",
+                  activeTab === "summary"
+                    ? "bg-primary text-white"
+                    : isFormComplete
+                    ? "bg-primary/15 text-primary"
+                    : "bg-muted text-muted-foreground"
+                )}>
+                  2
+                </span>
+                <span className={cn(
+                  "text-sm font-semibold sm:text-base",
+                  activeTab === "summary"
+                    ? "text-primary"
+                    : isFormComplete
+                    ? "text-muted-foreground"
+                    : "text-muted-foreground/50"
+                )}>
+                  L&amp;T Summary
+                </span>
+                {!isFormComplete && (
+                  <Lock className="ml-1 h-3.5 w-3.5 text-muted-foreground/40" />
+                )}
               </TabsTrigger>
             </TabsList>
           </div>
@@ -1093,6 +1205,9 @@ export default function BenchmarkPage() {
               walkScoreError={walkScoreError}
               transitData={transitData}
               onFieldChange={updateField}
+              onDownload={handleDownload}
+              downloadLoading={downloadLoading}
+              downloadError={downloadError}
             />
           </TabsContent>
         </Tabs>

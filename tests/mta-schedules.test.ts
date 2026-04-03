@@ -5,12 +5,12 @@ import {
   fetchSchedulePdfs,
 } from "@/lib/mta-schedules";
 
+const mockFrom = vi.fn();
+
 vi.mock("@/lib/supabase/client", () => ({
-  supabase: {
-    storage: {
-      from: vi.fn(),
-    },
-  },
+  createAdminClient: () => ({
+    storage: { from: mockFrom },
+  }),
 }));
 
 describe("ROUTE_TO_SCHEDULE", () => {
@@ -84,30 +84,24 @@ describe("fetchSchedulePdfs", () => {
   });
 
   it("throws when Supabase storage returns an error", async () => {
-    const { supabase } = await import("@/lib/supabase/client");
     const mockDownload = vi.fn().mockResolvedValue({
       data: null,
       error: new Error("not found"),
     });
-    vi.mocked(supabase.storage.from).mockReturnValue({
-      download: mockDownload,
-    } as any);
+    mockFrom.mockReturnValue({ download: mockDownload });
 
     await expect(fetchSchedulePdfs(["1"])).rejects.toThrow(
-      "Schedule not found: mta-schedule-1.pdf is missing from storage"
+      "Schedule not found: 1.pdf is missing from storage"
     );
   });
 
   it("returns correct filename and buffer for successful fetch", async () => {
-    const { supabase } = await import("@/lib/supabase/client");
     const fakeBlob = new Blob([new Uint8Array([1, 2, 3])]);
     const mockDownload = vi.fn().mockResolvedValue({
       data: fakeBlob,
       error: null,
     });
-    vi.mocked(supabase.storage.from).mockReturnValue({
-      download: mockDownload,
-    } as any);
+    mockFrom.mockReturnValue({ download: mockDownload });
 
     const results = await fetchSchedulePdfs(["L"]);
     expect(results).toHaveLength(1);

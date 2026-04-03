@@ -45,3 +45,8 @@ next-env.d.ts
 
 # GTFS preprocessed index
 public/gtfs_supplemented/index/
+
+
+*.pdf
+*.docx
+.kiro

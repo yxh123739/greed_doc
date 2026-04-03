@@ -11,7 +11,8 @@ import {
   useMap,
   useMapsLibrary,
 } from "@vis.gl/react-google-maps";
-import { ChevronDown, Loader2, MapPin, TrainFront } from "lucide-react";
+import { ChevronDown, Loader2, MapPin } from "lucide-react";
+import Image from "next/image";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
 import { HALF_MILE_METERS } from "@/lib/google-maps";
@@ -127,9 +128,7 @@ function StationMarker({ station }: { station: TransitStation }) {
         onClick={() => setOpen((value) => !value)}
         title={station.name}
       >
-        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-purple-600 shadow-md">
-          <TrainFront className="h-4 w-4 text-white" />
-        </div>
+        <Image src="/subway.png" alt="subway" width={40} height={40} className="drop-shadow-md" />
       </AdvancedMarker>
 
       {open && (
@@ -179,16 +178,14 @@ function StationRouteBadges({ station }: { station: TransitStation }) {
 
   return (
     <AdvancedMarker position={badgePos} clickable={false}>
-      <div className="flex gap-0.5">
-        {station.routes.slice(0, 4).map((route) => (
-          <span
+      <div className="flex gap-[3px]">
+        {station.routes.slice(0, 6).map((route) => (
+          <div
             key={route.routeId}
-            className={`inline-block rounded px-1 py-0.5 text-[9px] font-bold leading-none shadow ${
-              route.counted ? "bg-blue-600 text-white" : "bg-gray-300 text-gray-500 line-through"
+            className={`h-3 w-3 rounded-full ${
+              route.counted ? "bg-blue-600" : "bg-gray-300"
             }`}
-          >
-            {route.routeName}
-          </span>
+          />
         ))}
       </div>
     </AdvancedMarker>
@@ -359,7 +356,7 @@ function ScoringBreakdown({ data }: { data: TransitApiResponse }) {
                     <span className="flex h-6 w-6 items-center justify-center rounded-full bg-purple-600 text-xs font-bold text-white">
                       {index + 1}
                     </span>
-                    <TrainFront className="h-4 w-4 text-purple-600" />
+                    <Image src="/subway.png" alt="subway" width={16} height={16} />
                     <span className="font-bold text-foreground">{station.name}</span>
                   </div>
                   <span className="text-sm font-semibold text-muted-foreground">

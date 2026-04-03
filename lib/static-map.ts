@@ -1,4 +1,5 @@
 const STATIC_MAP_BASE = "https://maps.googleapis.com/maps/api/staticmap";
+const DIRECTIONS_BASE = "https://maps.googleapis.com/maps/api/directions/json";
 const MAP_SIZE = "640x400";
 const MAP_SCALE = "2";
 
@@ -60,15 +61,53 @@ function encodeSignedNumber(num: number): string {
 }
 
 /**
+ * Fetch actual walking route polylines from the Directions API for each station.
+ * Returns null for any station where the Directions API fails — callers should
+ * fall back to a straight line in that case.
+ */
+async function fetchWalkingPolylines(
+  origin: { lat: number; lng: number },
+  stations: StationPin[],
+  apiKey: string
+): Promise<(string | null)[]> {
+  return Promise.all(
+    stations.map(async (station) => {
+      try {
+        const url =
+          `${DIRECTIONS_BASE}?origin=${origin.lat},${origin.lng}` +
+          `&destination=${station.location.lat},${station.location.lng}` +
+          `&mode=walking&key=${apiKey}`;
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (
+          data.status !== "OK" ||
+          !data.routes?.[0]?.overview_polyline?.points
+        ) {
+          return null;
+        }
+
+        return data.routes[0].overview_polyline.points as string;
+      } catch {
+        return null;
+      }
+    })
+  );
+}
+
+/**
  * Build a Google Static Maps URL with:
  * - Blue pin for project location
- * - Purple pins with numeric labels for qualifying stations
- * - Dashed green circle for 0.5 mi radius
+ * - Station markers using a custom icon URL (or purple labeled pins as fallback)
+ * - Actual walking route polylines (or straight-line fallback) per station
  */
 export function buildStaticMapUrl(
   projectLocation: { lat: number; lng: number },
   stations: StationPin[],
-  apiKey: string
+  walkingPolylines: (string | null)[],
+  apiKey: string,
+  stationIconUrl?: string
 ): string {
   const params = new URLSearchParams();
   params.set("size", MAP_SIZE);
@@ -82,34 +121,61 @@ export function buildStaticMapUrl(
     `color:blue|label:P|${projectLocation.lat},${projectLocation.lng}`
   );
 
-  // Station markers (purple with numeric labels)
+  // Station markers — custom subway icon or fallback to purple numbered pins
   for (const station of stations) {
-    params.append(
-      "markers",
-      `color:purple|label:${station.index}|${station.location.lat},${station.location.lng}`
-    );
+    const markerSpec = stationIconUrl
+      ? `icon:${stationIconUrl}|${station.location.lat},${station.location.lng}`
+      : `color:purple|label:${station.index}|${station.location.lat},${station.location.lng}`;
+    params.append("markers", markerSpec);
   }
 
-  // 0.5 mi circle
-  const circleEncoded = encodeCirclePolyline(projectLocation, 804.672);
-  params.append(
-    "path",
-    `color:0x7cb342aa|weight:2|fillcolor:0x7cb3420a|enc:${circleEncoded}`
-  );
+  // Walking routes: encoded polyline from Directions API, or straight-line fallback
+  for (let i = 0; i < stations.length; i++) {
+    const station = stations[i];
+    const polyline = walkingPolylines[i];
+
+    if (polyline) {
+      params.append("path", `color:0x4285F4CC|weight:4|enc:${polyline}`);
+    } else {
+      params.append(
+        "path",
+        `color:0x4285F4CC|weight:4|${projectLocation.lat},${projectLocation.lng}|${station.location.lat},${station.location.lng}`
+      );
+    }
+  }
 
   return `${STATIC_MAP_BASE}?${params.toString()}`;
 }
 
 /**
  * Fetch the static map image as a Buffer.
- * Throws with descriptive message on failure.
+ * Internally fetches actual walking routes from the Directions API first,
+ * then builds the map URL with encoded polylines.
+ * Provide `appBaseUrl` (e.g. "https://example.com") to use the custom
+ * subway icon from /subway.png; omit to fall back to default purple pins.
+ * Throws with descriptive message on map fetch failure.
  */
 export async function fetchStaticMapImage(
   projectLocation: { lat: number; lng: number },
   stations: StationPin[],
-  apiKey: string
+  apiKey: string,
+  appBaseUrl?: string
 ): Promise<Buffer> {
-  const url = buildStaticMapUrl(projectLocation, stations, apiKey);
+  const walkingPolylines = await fetchWalkingPolylines(
+    projectLocation,
+    stations,
+    apiKey
+  );
+
+  const stationIconUrl = appBaseUrl ? `${appBaseUrl}/subway.png` : undefined;
+
+  const url = buildStaticMapUrl(
+    projectLocation,
+    stations,
+    walkingPolylines,
+    apiKey,
+    stationIconUrl
+  );
 
   const response = await fetch(url);
   if (!response.ok) {

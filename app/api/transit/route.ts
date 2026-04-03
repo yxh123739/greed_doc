@@ -119,7 +119,9 @@ interface WalkingDistanceResult {
   distanceMi: number | null;
 }
 
-async function getWalkingDistances(
+const DISTANCE_MATRIX_BATCH_SIZE = 25;
+
+async function getWalkingDistancesBatch(
   origin: { lat: number; lng: number },
   destinations: { lat: number; lng: number }[],
   signal: AbortSignal
@@ -127,27 +129,44 @@ async function getWalkingDistances(
   if (destinations.length === 0) return [];
 
   const originParam = `${origin.lat},${origin.lng}`;
-  const destinationParam = destinations.map((destination) => `${destination.lat},${destination.lng}`).join("|");
+  const destinationParam = destinations.map((d) => `${d.lat},${d.lng}`).join("|");
 
   const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${originParam}&destinations=${destinationParam}&mode=walking&units=imperial&key=${API_KEY}`;
 
-  try {
-    const response = await fetchWithRetry(url, { signal });
-    const data = await response.json();
+  const response = await fetchWithRetry(url, { signal });
+  const data = await response.json();
 
-    if (data.status !== "OK" || !data.rows?.[0]?.elements) {
-      return destinations.map(() => ({ distanceMi: null }));
-    }
-
-    return data.rows[0].elements.map(
-      (element: { status: string; distance?: { value: number } }) => {
-        if (element.status !== "OK" || !element.distance) return { distanceMi: null };
-        return { distanceMi: element.distance.value / 1609.344 };
-      }
-    );
-  } catch {
+  if (data.status !== "OK" || !data.rows?.[0]?.elements) {
     return destinations.map(() => ({ distanceMi: null }));
   }
+
+  return data.rows[0].elements.map(
+    (element: { status: string; distance?: { value: number } }) => {
+      if (element.status !== "OK" || !element.distance) return { distanceMi: null };
+      return { distanceMi: element.distance.value / 1609.344 };
+    }
+  );
+}
+
+async function getWalkingDistances(
+  origin: { lat: number; lng: number },
+  destinations: { lat: number; lng: number }[],
+  signal: AbortSignal
+): Promise<WalkingDistanceResult[]> {
+  if (destinations.length === 0) return [];
+
+  // Batch requests to stay within Distance Matrix API destination limit
+  const results: WalkingDistanceResult[] = [];
+  for (let i = 0; i < destinations.length; i += DISTANCE_MATRIX_BATCH_SIZE) {
+    const batch = destinations.slice(i, i + DISTANCE_MATRIX_BATCH_SIZE);
+    try {
+      const batchResults = await getWalkingDistancesBatch(origin, batch, signal);
+      results.push(...batchResults);
+    } catch {
+      results.push(...batch.map(() => ({ distanceMi: null })));
+    }
+  }
+  return results;
 }
 
 // --- Main handler ---
@@ -218,15 +237,19 @@ export async function POST(req: NextRequest) {
 
     const scoredStops: ScoredStation[] = nearbyCandidates
       .map((candidate, indexOffset) => {
-        const fallbackDistance = candidate.distanceMi;
-        const matrixDistance = walkingResults[indexOffset]?.distanceMi ?? fallbackDistance;
+        const walkingMi = walkingResults[indexOffset]?.distanceMi;
+        // Drop stops where Distance Matrix returned no result —
+        // haversine fallback would systematically underestimate walking distance
+        // and inflate the qualifying station count.
+        if (walkingMi == null) return null;
 
         return {
           stopId: candidate.stopId,
           stop: index[candidate.stopId],
-          walkingDistanceMi: Math.round(matrixDistance * 100) / 100,
+          walkingDistanceMi: Math.round(walkingMi * 100) / 100,
         };
       })
+      .filter((stop): stop is NonNullable<typeof stop> => stop !== null)
       .filter((stop) => stop.stop !== undefined)
       .filter((stop) => stop.walkingDistanceMi <= 0.5)
       .sort((a, b) => a.walkingDistanceMi - b.walkingDistanceMi);

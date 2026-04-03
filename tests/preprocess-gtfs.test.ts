@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   parseCalendar,
+  filterActiveServices,
   parseRoutes,
   parseTrips,
   aggregateStopTrips,
@@ -16,6 +17,7 @@ SVC-WK,1,1,1,1,1,0,0,20251103,20260515`;
     expect(result.get("SVC-WK")).toEqual({
       monday: true, tuesday: true, wednesday: true,
       thursday: true, friday: true, saturday: false, sunday: false,
+      startDate: "20251103", endDate: "20260515",
     });
   });
 
@@ -50,11 +52,39 @@ describe("parseTrips", () => {
   });
 });
 
+describe("filterActiveServices", () => {
+  it("excludes services outside the reference date range", () => {
+    const calendar = parseCalendar(
+      `service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+SVC-ACTIVE,1,1,1,1,1,0,0,20260101,20261231
+SVC-EXPIRED,1,1,1,1,1,0,0,20250101,20251231
+SVC-FUTURE,1,1,1,1,1,0,0,20270101,20271231`
+    );
+    const active = filterActiveServices(calendar, "20260601");
+    expect(active.size).toBe(1);
+    expect(active.has("SVC-ACTIVE")).toBe(true);
+    expect(active.has("SVC-EXPIRED")).toBe(false);
+    expect(active.has("SVC-FUTURE")).toBe(false);
+  });
+
+  it("keeps services with missing date fields (defensive)", () => {
+    const calendar = new Map([
+      ["SVC-NO-DATES", {
+        monday: true, tuesday: false, wednesday: false, thursday: false,
+        friday: false, saturday: false, sunday: false,
+        startDate: "", endDate: "",
+      }],
+    ]);
+    const active = filterActiveServices(calendar, "20260601");
+    expect(active.size).toBe(1);
+  });
+});
+
 describe("aggregateStopTrips", () => {
   it("counts weekday-min and weekend-max per stop per route per direction", () => {
     const calendar = new Map([
-      ["SVC-WK", { monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: false, sunday: false }],
-      ["SVC-SAT", { monday: false, tuesday: false, wednesday: false, thursday: false, friday: false, saturday: true, sunday: false }],
+      ["SVC-WK", { monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: false, sunday: false, startDate: "20250101", endDate: "20261231" }],
+      ["SVC-SAT", { monday: false, tuesday: false, wednesday: false, thursday: false, friday: false, saturday: true, sunday: false, startDate: "20250101", endDate: "20261231" }],
     ]);
     const trips = new Map([
       ["T1", { routeId: "1", serviceId: "SVC-WK", directionId: 0 }],

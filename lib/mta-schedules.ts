@@ -38,26 +38,27 @@ export function getScheduleGroups(routeNames: string[]): string[] {
 export async function fetchSchedulePdfs(
   groups: string[]
 ): Promise<{ filename: string; buffer: Buffer }[]> {
-  // Dynamically import supabase client to avoid env var issues in test environment
-  const { supabase } = await import("@/lib/supabase/client");
+  // Use admin client (service role key) — this runs server-side only.
+  // The mta-schedules bucket is private; the anon key cannot download from it.
+  const { createAdminClient } = await import("@/lib/supabase/client");
+  const adminClient = createAdminClient();
 
   const results = await Promise.all(
     groups.map(async (group) => {
-      const filename = `mta-schedule-${group}.pdf`;
-      const { data, error } = await supabase.storage
+      const storagePath = `${group}.pdf`;
+      const zipEntryName = `mta-schedule-${group}.pdf`;
+      const { data, error } = await adminClient.storage
         .from("mta-schedules")
-        // Storage path is just `${group}.pdf` (no prefix); `filename` adds the
-        // `mta-schedule-` prefix used as the ZIP entry name returned to callers.
-        .download(`${group}.pdf`);
+        .download(storagePath);
 
       if (error || !data) {
         throw new Error(
-          `Schedule not found: ${filename} is missing from storage`
+          `Schedule not found: ${storagePath} is missing from storage`
         );
       }
 
       const arrayBuffer = await data.arrayBuffer();
-      return { filename, buffer: Buffer.from(arrayBuffer) };
+      return { filename: zipEntryName, buffer: Buffer.from(arrayBuffer) };
     })
   );
 
